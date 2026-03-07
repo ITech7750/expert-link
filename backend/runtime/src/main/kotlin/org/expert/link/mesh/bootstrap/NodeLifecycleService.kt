@@ -271,7 +271,7 @@ class NodeLifecycleService(
             PacketType.FILE_OFFER -> {
                 verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
                 val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as FileOffer
-                fileTransferService.handleFileOffer(payload)
+                fileTransferService.handleFileOffer(payload, envelope.conversationId)
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
             PacketType.FILE_ACCEPT -> {

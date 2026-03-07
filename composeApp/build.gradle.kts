@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.multiplatform")
     alias(libs.plugins.jetbrainsCompose)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 configurations.configureEach {
@@ -54,14 +55,24 @@ kotlin {
             implementation(compose.material3)
             implementation(compose.ui)
             implementation(compose.materialIconsExtended)
+
+            // decompose
+            implementation(libs.decompose)
+            implementation(libs.decompose.extensions.compose)
+            implementation(libs.essenty.lifecycle)
+
+            // koin
+            implementation(libs.koin.core)
         }
 
         val jvmMain by getting {
             dependencies {
                 implementation(project(":backend"))
+                implementation(project(":database"))
                 implementation(libs.zxingCore)
                 implementation(compose.desktop.currentOs)
                 implementation(libs.webrtcJava)
+                runtimeOnly(libs.logbackClassic)
                 runtimeOnly("dev.onvoid.webrtc:webrtc-java:${libs.versions.webrtcJava.get()}:$webrtcClassifier")
             }
         }
@@ -69,11 +80,14 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation(project(":backend"))
+                implementation(project(":database"))
                 implementation(libs.androidxCoreKtx)
                 implementation(libs.androidxActivityCompose)
                 implementation(libs.zxingCore)
                 implementation(libs.zxingAndroidEmbedded)
                 implementation(libs.googleWebrtc)
+
+                implementation(libs.koin.android)
             }
         }
     }

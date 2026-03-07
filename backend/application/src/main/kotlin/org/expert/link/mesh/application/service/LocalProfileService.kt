@@ -1,5 +1,6 @@
 package org.expert.link.mesh.application.service
 
+import kotlinx.datetime.Clock
 import org.expert.link.mesh.application.factory.KeyMaterialFactory
 import org.expert.link.mesh.domain.model.identity.LocalProfile
 import org.expert.link.mesh.domain.model.identity.PeerIdentity
@@ -14,8 +15,21 @@ class LocalProfileService(
      * Returns the existing local profile or creates a new one if absent.
      */
     suspend fun getOrCreate(displayName: String, capabilities: Set<String>): LocalProfile {
-        return localProfileRepositoryPort.get() ?: localProfileRepositoryPort.save(
-            keyMaterialFactory.createLocalProfile(displayName, capabilities),
+        val current = localProfileRepositoryPort.get()
+        if (current == null) {
+            return localProfileRepositoryPort.save(
+                keyMaterialFactory.createLocalProfile(displayName, capabilities),
+            )
+        }
+        if (current.displayName == displayName && current.capabilities == capabilities) {
+            return current
+        }
+        return localProfileRepositoryPort.save(
+            current.copy(
+                displayName = displayName,
+                capabilities = capabilities,
+                updatedAt = Clock.System.now(),
+            ),
         )
     }
 

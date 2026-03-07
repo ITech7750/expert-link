@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="database-jvm-0.1.0">
+    <output-path>$PROJECT_DIR$/database/build/libs</output-path>
+    <root id="archive" name="database-jvm-0.1.0.jar">
+      <element id="module-output" name="expert-link.database.jvmMain" />
+    </root>
+  </artifact>
+</component>

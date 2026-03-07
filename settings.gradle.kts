@@ -38,6 +38,7 @@ include(":bootstrap")
 include(":simulator")
 include(":composeApp")
 include(":app-desktop")
+include(":database")
 
 project(":backend:data").projectDir = file("backend/data")
 project(":backend:application").projectDir = file("backend/application")
