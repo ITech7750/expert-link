@@ -1,4 +1,4 @@
-package org.expert.link.mesh.infrastructure.discovery
+package org.expert.link.mesh.infrastructure.adapter
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope

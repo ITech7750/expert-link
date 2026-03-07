@@ -1,4 +1,4 @@
-package org.expert.link.mesh.infrastructure.cache
+package org.expert.link.mesh.infrastructure.repository
 
 import kotlinx.datetime.Instant
 import kotlinx.coroutines.sync.Mutex

@@ -1,4 +1,4 @@
-package org.expert.link.mesh.bootstrap.controller
+package org.expert.link.mesh.controller
 
 import org.expert.link.mesh.bootstrap.NodeLifecycleService
 import org.expert.link.mesh.domain.model.network.PacketEnvelope

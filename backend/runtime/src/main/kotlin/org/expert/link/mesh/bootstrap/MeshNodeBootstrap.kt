@@ -35,8 +35,8 @@ import org.expert.link.mesh.application.service.RetrySchedulerService
 import org.expert.link.mesh.application.service.RoutingService
 import org.expert.link.mesh.application.service.SecurityIncidentService
 import org.expert.link.mesh.bootstrap.config.NodeConfiguration
-import org.expert.link.mesh.bootstrap.controller.PacketController
-import org.expert.link.mesh.bootstrap.controller.PacketRouteHandler
+import org.expert.link.mesh.controller.PacketController
+import org.expert.link.mesh.controller.PacketRouteController
 import org.expert.link.mesh.bootstrap.runtime.MeshNodeComponents
 import org.expert.link.mesh.bootstrap.runtime.MeshNodeRuntime
 import org.expert.link.mesh.domain.model.network.EndpointSource
@@ -45,14 +45,14 @@ import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.security.RateLimitRule
 import org.expert.link.mesh.domain.model.security.RateLimitScope
 import org.expert.link.mesh.infrastructure.adapter.JvmMulticastSupportAdapter
-import org.expert.link.mesh.infrastructure.cache.InMemoryDedupCacheAdapter
-import org.expert.link.mesh.infrastructure.cache.InMemoryEndpointCacheAdapter
-import org.expert.link.mesh.infrastructure.cache.InMemoryReversePathRepositoryAdapter
-import org.expert.link.mesh.infrastructure.cache.InMemoryRouteRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryDedupCacheAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryEndpointCacheAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryReversePathRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryRouteRepositoryAdapter
 import org.expert.link.mesh.infrastructure.client.RendezvousRelayClient
-import org.expert.link.mesh.infrastructure.crypto.BasicCryptoAdapter
-import org.expert.link.mesh.infrastructure.discovery.InMemoryDiscoveryAdapter
-import org.expert.link.mesh.infrastructure.discovery.UdpDiscoveryAdapter
+import org.expert.link.mesh.infrastructure.adapter.BasicCryptoAdapter
+import org.expert.link.mesh.infrastructure.adapter.InMemoryDiscoveryAdapter
+import org.expert.link.mesh.infrastructure.adapter.UdpDiscoveryAdapter
 import org.expert.link.mesh.infrastructure.repository.FileSystemChunkStorageAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryBlockListRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryCallSessionRepositoryAdapter
@@ -65,8 +65,8 @@ import org.expert.link.mesh.infrastructure.repository.InMemoryOutgoingQueueAdapt
 import org.expert.link.mesh.infrastructure.repository.InMemoryPairingSessionRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryPeerRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryPendingAckRepositoryAdapter
-import org.expert.link.mesh.infrastructure.transport.InMemoryPacketTransportAdapter
-import org.expert.link.mesh.infrastructure.transport.KtorPacketTransportAdapter
+import org.expert.link.mesh.infrastructure.adapter.InMemoryPacketTransportAdapter
+import org.expert.link.mesh.infrastructure.adapter.KtorPacketTransportAdapter
 
 /** Сборщик runtime узла.
  *
@@ -261,7 +261,7 @@ class MeshNodeBootstrap {
             onStop = { server?.stop(1_000, 1_000) },
         )
         val packetController = PacketController(lifecycleService)
-        val routeHandler = PacketRouteHandler(packetController)
+        val routeHandler = PacketRouteController(packetController)
         server = if (configuration.featureFlags.inMemoryTransport) null else createServer(configuration, routeHandler)
         if (configuration.featureFlags.inMemoryTransport) {
             InMemoryPacketTransportAdapter.register(localEndpoint) { envelope -> lifecycleService.handleIncomingPacket(envelope) }
@@ -299,7 +299,7 @@ class MeshNodeBootstrap {
         )
     }
 
-    private fun createServer(configuration: NodeConfiguration, routeHandler: PacketRouteHandler): ApplicationEngine {
+    private fun createServer(configuration: NodeConfiguration, routeHandler: PacketRouteController): ApplicationEngine {
         return embeddedServer(Netty, host = configuration.bindHost, port = configuration.httpPort) {
             install(CallLogging)
             install(ContentNegotiation) {

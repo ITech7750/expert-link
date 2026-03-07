@@ -23,7 +23,7 @@ rootProject.name = "expert-link"
 include(":contract")
 include(":backend")
 include(":backend:data")
-include(":backend:engine")
+include(":backend:application")
 include(":backend:infra")
 include(":backend:runtime")
 include(":bootstrap")
@@ -37,6 +37,6 @@ if (androidSdkAvailable) {
 }
 
 project(":backend:data").projectDir = file("backend/data")
-project(":backend:engine").projectDir = file("backend/engine")
+project(":backend:application").projectDir = file("backend/application")
 project(":backend:infra").projectDir = file("backend/infra")
 project(":backend:runtime").projectDir = file("backend/runtime")

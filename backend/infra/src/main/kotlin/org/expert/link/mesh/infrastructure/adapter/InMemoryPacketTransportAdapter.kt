@@ -1,4 +1,4 @@
-package org.expert.link.mesh.infrastructure.transport
+package org.expert.link.mesh.infrastructure.adapter
 
 import kotlinx.datetime.Clock
 import org.expert.link.mesh.domain.model.network.PacketEnvelope

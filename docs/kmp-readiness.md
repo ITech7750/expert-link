@@ -86,7 +86,7 @@
 Runtime caches при этом можно оставить in-memory.
 
 ## Что ещё можно сделать на следующем этапе
-- перевести часть `backend:engine` в Multiplatform модуль после выделения logging facade
+- перевести часть `backend:application` в Multiplatform модуль после выделения logging facade
 - заменить JVM filesystem adapter на expect/actual или platform adapters через KMP source sets
 - подготовить Android и iOS реализации `FileChunkStoragePort`
 - ввести SQLDelight adapters для persistent repository ports

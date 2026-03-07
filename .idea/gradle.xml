@@ -24,7 +24,7 @@
             <option value="$PROJECT_DIR$/app-shared" />
             <option value="$PROJECT_DIR$/backend" />
             <option value="$PROJECT_DIR$/backend/data" />
-            <option value="$PROJECT_DIR$/backend/engine" />
+            <option value="$PROJECT_DIR$/backend/application" />
             <option value="$PROJECT_DIR$/backend/infra" />
             <option value="$PROJECT_DIR$/backend/runtime" />
             <option value="$PROJECT_DIR$/bootstrap" />

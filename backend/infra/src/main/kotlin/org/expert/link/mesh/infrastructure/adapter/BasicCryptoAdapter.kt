@@ -1,4 +1,4 @@
-package org.expert.link.mesh.infrastructure.crypto
+package org.expert.link.mesh.infrastructure.adapter
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

@@ -16,7 +16,7 @@
 - `contract` — KMP-ready публичные модели и API для мобильной интеграции
 - `backend` — библиотечный facade поверх внутреннего runtime
 - `backend:data` — KMP-ready доменные модели, storage contracts и порты
-- `backend:engine` — внутренняя application-логика
+- `backend:application` — внутренняя application-логика
 - `backend:infra` — внутренние адаптеры и репозитории
 - `backend:runtime` — внутренний composition root узла
 - `app-shared` — общий presentation/UI/state слой Compose Multiplatform
@@ -187,7 +187,7 @@ node.stop()
 - `MeshNode`
 - модели из `contract`
 
-`simulator` и `app-shared` демонстрируют один и тот же способ интеграции: UI не обращается к `backend:data`, `backend:engine`, `backend:infra` и `backend:runtime`.
+`simulator` и `app-shared` демонстрируют один и тот же способ интеграции: UI не обращается к `backend:data`, `backend:application`, `backend:infra` и `backend:runtime`.
 
 ## Статус платформ
 - `Desktop` — готово и собирается локально

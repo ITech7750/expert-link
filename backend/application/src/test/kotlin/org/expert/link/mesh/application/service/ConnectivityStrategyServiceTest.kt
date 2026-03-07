@@ -12,8 +12,8 @@ import org.expert.link.mesh.domain.model.relay.PeerRegistration
 import org.expert.link.mesh.domain.model.relay.RelayRouteCandidate
 import org.expert.link.mesh.domain.port.external.RelayGatewayPort
 import org.expert.link.mesh.domain.port.external.RendezvousRegistryPort
-import org.expert.link.mesh.infrastructure.cache.InMemoryEndpointCacheAdapter
-import org.expert.link.mesh.infrastructure.cache.InMemoryRouteRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryEndpointCacheAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryRouteRepositoryAdapter
 import org.junit.jupiter.api.Test
 import kotlinx.datetime.Instant
 

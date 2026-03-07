@@ -1,4 +1,4 @@
-package org.expert.link.mesh.bootstrap.controller
+package org.expert.link.mesh.controller
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -10,7 +10,7 @@ import io.ktor.server.routing.route
 import org.expert.link.mesh.domain.model.network.PacketEnvelope
 
 /** Регистрирует HTTP-маршруты транспорта. */
-class PacketRouteHandler(
+class PacketRouteController(
     private val packetController: PacketController,
 ) {
     /** Подключает маршруты под `/api/v1`. */

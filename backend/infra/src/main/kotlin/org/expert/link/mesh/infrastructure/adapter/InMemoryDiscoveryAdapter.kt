@@ -1,4 +1,4 @@
-package org.expert.link.mesh.infrastructure.discovery
+package org.expert.link.mesh.infrastructure.adapter
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow

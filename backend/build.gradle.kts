@@ -7,7 +7,7 @@ dependencies {
 
     implementation(project(":backend:runtime"))
     implementation(project(":backend:data"))
-    implementation(project(":backend:engine"))
+    implementation(project(":backend:application"))
     implementation(libs.kotlinxDatetime)
 
     testImplementation(platform(libs.junitBom))

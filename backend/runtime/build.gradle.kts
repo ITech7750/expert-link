@@ -5,7 +5,7 @@ plugins {
 
 dependencies {
     implementation(project(":backend:data"))
-    implementation(project(":backend:engine"))
+    implementation(project(":backend:application"))
     implementation(project(":backend:infra"))
     implementation(libs.bundles.kotlinxCore)
     implementation(libs.bundles.ktorServer)

@@ -1,4 +1,4 @@
-package org.expert.link.mesh.infrastructure.crypto
+package org.expert.link.mesh.infrastructure.adapter
 
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat

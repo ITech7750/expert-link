@@ -6,7 +6,7 @@
 - `org.expert.link.mesh.contract.api.MeshNode`
 - модели из `org.expert.link.mesh.contract.*`
 
-Внутренние пакеты `backend:data`, `backend:engine`, `backend:infra`, `backend:runtime` мобильное приложение не использует.
+Внутренние пакеты `backend:data`, `backend:application`, `backend:infra`, `backend:runtime` мобильное приложение не использует.
 
 ## KMP app-модули
 - `app-shared` — общий Compose UI, navigation, state holders и integration layer
