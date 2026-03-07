@@ -205,4 +205,4 @@ Legacy методы `startCall`, `sendCallSignal`, `hangupCall` оставлен
 
 ### Platform media adapters
 - Android host: `AndroidWebRtcMediaEngineAdapter` (реальный WebRTC backend через `org.webrtc:google-webrtc`).
-- Desktop host: `DesktopWebRtcMediaEngineAdapter` (`isSupported=false`, signaling работает, media backend не подключён).
+- Desktop host: `DesktopWebRtcMediaEngineAdapter` (реальный WebRTC backend через `dev.onvoid.webrtc`, `isSupported=true`).

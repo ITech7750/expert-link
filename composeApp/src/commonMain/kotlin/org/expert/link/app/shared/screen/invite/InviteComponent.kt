@@ -201,9 +201,10 @@ class InviteComponent(
                         .getOrElse { runCatching { node.openConversation(peerId) }.getOrNull() }
                 }
                 PairingResult(
-                    paired = true,
+                    paired = pairedPeer != null || conversation != null,
                     peerId = pairedPeer?.identity?.peerId,
-                    title = pairedPeer?.identity?.displayName,
+                    title = pairedPeer?.identity?.displayName
+                        ?: conversation?.title?.takeIf { it.isNotBlank() },
                     conversationId = conversation?.conversationId,
                 )
             }
@@ -221,13 +222,16 @@ class InviteComponent(
                 it.copy(
                     isPairing = false,
                     scanInput = "",
-                    message = "Собеседник добавлен",
+                    message = if (pairing.paired) "Собеседник добавлен" else "Запрос отправлен",
                 )
             }
 
-            if (!pairing.paired) return@launch
+            if (!pairing.paired) {
+                onBack()
+                return@launch
+            }
 
-            val chatConfig = if (pairing.peerId != null && pairing.conversationId != null) {
+            val chatConfig = if (pairing.conversationId != null) {
                 Config.Chat(
                     conversationId = pairing.conversationId,
                     peerId = pairing.peerId,

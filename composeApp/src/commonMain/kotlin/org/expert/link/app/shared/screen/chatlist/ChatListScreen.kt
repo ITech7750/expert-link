@@ -151,6 +151,8 @@ fun ChatListScreen(component: ChatListComponent) {
                                             text = incoming.title,
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                         )
                                     }
                                 }
