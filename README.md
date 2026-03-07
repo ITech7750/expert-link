@@ -296,18 +296,20 @@ sequenceDiagram
 8. Открыть `Diagnostics` и показать логи/метрики/топологию.
 
  Версия № 1
-![img.png](img.png)
-![img_1.png](img_1.png)
-![img_2.png](img_2.png)
-![img_3.png](img_3.png)
-![img_4.png](img_4.png)
+![img.png](docs/img.png)
+![img_1.png](docs/img_1.png)
+![img_2.png](docs/img_2.png)
+![img_3.png](docs/img_3.png)
+![img_4.png](docs/img_4.png)
 
 Версия №2
 
-![6.jpg](6.jpg)
-![7.jpg](7.jpg)
-![8.jpg](8.jpg)
-![9.jpg](9.jpg)
+![6.jpg](docs/6.jpg)
+![7.jpg](docs/7.jpg)
+![8.jpg](docs/8.jpg)
+![9.jpg](docs/9.jpg)
+![10.jpg](docs/10.jpg)
+![11.jpg](docs/11.jpg)
 ## Ограничения текущей реализации
 - Все репозитории в runtime — in‑memory; состояние теряется при перезапуске.
 - `RendezvousRelayClient` — in‑memory stub, внешнего relay‑сервера нет.
