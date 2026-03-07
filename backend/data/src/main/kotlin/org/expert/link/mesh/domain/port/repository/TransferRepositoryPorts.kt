@@ -1,7 +1,5 @@
 package org.expert.link.mesh.domain.port.repository
 
-import org.expert.link.mesh.domain.model.call.CallSession
-import org.expert.link.mesh.domain.model.call.CallStatus
 import org.expert.link.mesh.domain.model.filetransfer.FileTransferSession
 import org.expert.link.mesh.domain.model.filetransfer.FileTransferStatus
 import org.expert.link.mesh.domain.model.storage.LocalFileResource
@@ -50,22 +48,4 @@ interface FileChunkStoragePort {
 
     /** Собирает файл и возвращает итоговый путь. */
     suspend fun assembleFile(transferId: String, targetPath: String, totalChunks: Int): String
-}
-
-/** Порт хранения call-сессий.
- *
- * Может быть постоянным или session-scoped, в зависимости от требований платформы.
- */
-interface CallSessionRepositoryPort {
-    /** Сохраняет call session. */
-    suspend fun save(session: CallSession): CallSession
-
-    /** Ищет call session по id. */
-    suspend fun findByCallId(callId: String): CallSession?
-
-    /** Возвращает все call session. */
-    suspend fun list(): List<CallSession>
-
-    /** Обновляет статус звонка. */
-    suspend fun updateStatus(callId: String, status: CallStatus): CallSession?
 }

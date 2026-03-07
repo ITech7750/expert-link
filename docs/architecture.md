@@ -74,3 +74,45 @@
 - `simulator` использует только `MeshBackend.launch` и `MeshNode`.
 - `app-shared` использует только `MeshNode` и contract-модели.
 - Внутренние `backend:data/application/infra/runtime` классы в UI/Simulator напрямую не используются.
+
+## Call подсистема (v2)
+
+### Domain модели
+- `CallSession`, `CallRoom`, `CallParticipant`, `CallInvitation`.
+- `CallState`, `CallType`, `CallScope`, `CallParticipantState`.
+- `CallSignal`, `CallEvent`.
+
+### Repository ports
+- `CallSessionRepositoryPort`
+- `CallRoomRepositoryPort`
+- `CallParticipantRepositoryPort`
+- `CallEventRepositoryPort`
+
+### Application сервис
+- `CallSignalingService`:
+  - запускает direct/group звонки (`audio`/`video`);
+  - обрабатывает `invite`, `accept/reject`, `join/leave`, `hangup`;
+  - ведёт state machine звонка;
+  - сохраняет участников и события.
+
+### Signaling поток
+1. `MeshNode` вызывает call-метод контракта.
+2. `backend:MeshBackend` делегирует в `NodeLifecycleService`.
+3. `NodeLifecycleService` делегирует в `CallSignalingService`.
+4. `CallSignalingService` формирует `PacketEnvelope` c payload `CALL_INVITE`/`CALL_SIGNAL`/`CALL_HANGUP`.
+5. На принимающей стороне `PacketController -> NodeLifecycleService` вызывает `handleInvite`/`handleSignal`/`handleHangup`.
+6. Состояния, участники и события сохраняются через call repository ports.
+
+### Infrastructure реализации
+- `InMemoryCallSessionRepositoryAdapter`
+- `InMemoryCallRoomRepositoryAdapter`
+- `InMemoryCallParticipantRepositoryAdapter`
+- `InMemoryCallEventRepositoryAdapter`
+
+### Contract API
+`MeshNode` поддерживает:
+- запуск: `startAudioCall`, `startVideoCall`, `startGroupAudioCall`, `startGroupVideoCall`;
+- действия: `acceptCall`, `rejectCall`, `joinCall`, `leaveCall`, `endCall`;
+- чтение состояний: `observeActiveCall`, `observeIncomingCalls`, `observeCallParticipants`, `observeCallEvents`.
+
+Legacy методы `startCall`, `sendCallSignal`, `hangupCall` оставлены для совместимости.

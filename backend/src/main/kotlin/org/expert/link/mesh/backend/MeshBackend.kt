@@ -8,16 +8,24 @@ import org.expert.link.mesh.contract.api.MeshChatCommand
 import org.expert.link.mesh.contract.api.MeshChatMemberCommand
 import org.expert.link.mesh.contract.api.MeshCreateGroupChatCommand
 import org.expert.link.mesh.contract.api.MeshCreateThreadCommand
+import org.expert.link.mesh.contract.api.MeshEndCallCommand
 import org.expert.link.mesh.contract.api.MeshFileTransferCommand
 import org.expert.link.mesh.contract.api.MeshHangupCallCommand
 import org.expert.link.mesh.contract.api.MeshNode
+import org.expert.link.mesh.contract.api.MeshAcceptCallCommand
+import org.expert.link.mesh.contract.api.MeshJoinCallCommand
+import org.expert.link.mesh.contract.api.MeshLeaveCallCommand
+import org.expert.link.mesh.contract.api.MeshRejectCallCommand
 import org.expert.link.mesh.contract.api.MeshSendMessageCommand
 import org.expert.link.mesh.contract.api.MeshSendThreadMessageCommand
+import org.expert.link.mesh.contract.api.MeshStartGroupCallCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
 import org.expert.link.mesh.contract.config.MeshNodeConfig
 import org.expert.link.mesh.contract.model.MeshBlockedPeer
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignal
+import org.expert.link.mesh.contract.model.MeshCallEvent
+import org.expert.link.mesh.contract.model.MeshCallParticipant
 import org.expert.link.mesh.contract.model.MeshChatMessage
 import org.expert.link.mesh.contract.model.MeshChatSummary
 import org.expert.link.mesh.contract.model.MeshConversation
@@ -280,10 +288,80 @@ private class DefaultMeshNode(
         return components.callSessionRepositoryPort.list().map { it.toContract() }
     }
 
-    override suspend fun startCall(command: MeshStartCallCommand): MeshCallSession {
-        return components.runtime.lifecycleService.startCall(command.targetPeerId, command.conversationId, command.offer).toContract()
+    override suspend fun startAudioCall(command: MeshStartCallCommand): MeshCallSession {
+        return components.runtime.lifecycleService
+            .startAudioCall(command.targetPeerId, command.conversationId, command.offer)
+            .toContract()
     }
 
+    override suspend fun startVideoCall(command: MeshStartCallCommand): MeshCallSession {
+        return components.runtime.lifecycleService
+            .startVideoCall(command.targetPeerId, command.conversationId, command.offer)
+            .toContract()
+    }
+
+    override suspend fun startGroupAudioCall(command: MeshStartGroupCallCommand): MeshCallSession {
+        return components.runtime.lifecycleService
+            .startGroupAudioCall(command.targetPeerIds, command.conversationId, command.offer, command.roomTitle)
+            .toContract()
+    }
+
+    override suspend fun startGroupVideoCall(command: MeshStartGroupCallCommand): MeshCallSession {
+        return components.runtime.lifecycleService
+            .startGroupVideoCall(command.targetPeerIds, command.conversationId, command.offer, command.roomTitle)
+            .toContract()
+    }
+
+    override suspend fun acceptCall(command: MeshAcceptCallCommand): MeshCallSignal {
+        return components.runtime.lifecycleService
+            .acceptCall(command.callId, command.recipientPeerId, command.answer)
+            .toContract()
+    }
+
+    override suspend fun rejectCall(command: MeshRejectCallCommand): MeshCallSignal {
+        return components.runtime.lifecycleService
+            .rejectCall(command.callId, command.recipientPeerId, command.reason)
+            .toContract()
+    }
+
+    override suspend fun joinCall(command: MeshJoinCallCommand): MeshCallSignal {
+        return components.runtime.lifecycleService
+            .joinCall(command.callId, command.recipientPeerId, command.answer)
+            .toContract()
+    }
+
+    override suspend fun leaveCall(command: MeshLeaveCallCommand): MeshCallSignal {
+        return components.runtime.lifecycleService
+            .leaveCall(command.callId, command.recipientPeerId, command.reason)
+            .toContract()
+    }
+
+    override suspend fun endCall(command: MeshEndCallCommand): MeshCallSession? {
+        return components.runtime.lifecycleService.endCall(command.callId, command.reason)?.toContract()
+    }
+
+    override suspend fun observeActiveCall(): List<MeshCallSession> {
+        return components.runtime.lifecycleService.observeActiveCalls().map { it.toContract() }
+    }
+
+    override suspend fun observeIncomingCalls(): List<MeshCallSession> {
+        return components.runtime.lifecycleService.observeIncomingCalls().map { it.toContract() }
+    }
+
+    override suspend fun observeCallParticipants(callId: String): List<MeshCallParticipant> {
+        return components.runtime.lifecycleService.observeCallParticipants(callId).map { it.toContract() }
+    }
+
+    override suspend fun observeCallEvents(callId: String, limit: Int): List<MeshCallEvent> {
+        return components.runtime.lifecycleService.observeCallEvents(callId, limit).map { it.toContract() }
+    }
+
+    @Deprecated("Используйте startAudioCall/startVideoCall")
+    override suspend fun startCall(command: MeshStartCallCommand): MeshCallSession {
+        return startAudioCall(command)
+    }
+
+    @Deprecated("Используйте acceptCall/rejectCall/joinCall/leaveCall")
     override suspend fun sendCallSignal(command: MeshCallSignalCommand): MeshCallSignal {
         return components.callSignalingService.sendSignal(
             callId = command.callId,
@@ -293,8 +371,9 @@ private class DefaultMeshNode(
         ).toContract()
     }
 
+    @Deprecated("Используйте endCall")
     override suspend fun hangupCall(command: MeshHangupCallCommand): MeshCallSession? {
-        return components.callSignalingService.hangup(command.callId, command.recipientPeerId, command.reason)?.toContract()
+        return components.runtime.lifecycleService.endCall(command.callId, command.reason)?.toContract()
     }
 
     override suspend fun recentEvents(limit: Int): List<MeshEventLogEntry> {

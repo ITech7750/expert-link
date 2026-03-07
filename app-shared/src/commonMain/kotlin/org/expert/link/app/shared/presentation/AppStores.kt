@@ -9,17 +9,25 @@ import kotlinx.coroutines.flow.update
 import org.expert.link.app.shared.navigation.AppNavigator
 import org.expert.link.app.shared.platform.AppPlatformServices
 import org.expert.link.mesh.contract.api.MeshCallSignalCommand
+import org.expert.link.mesh.contract.api.MeshAcceptCallCommand
 import org.expert.link.mesh.contract.api.MeshChatMemberCommand
 import org.expert.link.mesh.contract.api.MeshCreateGroupChatCommand
 import org.expert.link.mesh.contract.api.MeshCreateThreadCommand
+import org.expert.link.mesh.contract.api.MeshEndCallCommand
 import org.expert.link.mesh.contract.api.MeshFileTransferCommand
 import org.expert.link.mesh.contract.api.MeshHangupCallCommand
+import org.expert.link.mesh.contract.api.MeshJoinCallCommand
+import org.expert.link.mesh.contract.api.MeshLeaveCallCommand
 import org.expert.link.mesh.contract.api.MeshNode
+import org.expert.link.mesh.contract.api.MeshRejectCallCommand
 import org.expert.link.mesh.contract.api.MeshSendMessageCommand
 import org.expert.link.mesh.contract.api.MeshSendThreadMessageCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
+import org.expert.link.mesh.contract.api.MeshStartGroupCallCommand
 import org.expert.link.mesh.contract.config.MeshNodeConfig
 import org.expert.link.mesh.contract.model.MeshBlockedPeer
+import org.expert.link.mesh.contract.model.MeshCallEvent
+import org.expert.link.mesh.contract.model.MeshCallParticipant
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignalType
 import org.expert.link.mesh.contract.model.MeshChatMessage
@@ -717,9 +725,15 @@ data class CallsState(
     val error: String? = null,
     val message: String? = null,
     val targetPeerId: String = "",
+    val groupTargets: String = "",
+    val roomTitle: String = "",
     val offer: String = "demo-offer",
     val signalPayload: String = "ok",
     val sessions: List<MeshCallSession> = emptyList(),
+    val activeCalls: List<MeshCallSession> = emptyList(),
+    val incomingCalls: List<MeshCallSession> = emptyList(),
+    val participantsByCall: Map<String, List<MeshCallParticipant>> = emptyMap(),
+    val eventsByCall: Map<String, List<MeshCallEvent>> = emptyMap(),
 )
 
 class CallsStore(private val session: NodeSessionController) {
@@ -727,6 +741,8 @@ class CallsStore(private val session: NodeSessionController) {
     val state: StateFlow<CallsState> = _state.asStateFlow()
 
     fun updateTargetPeerId(value: String) { _state.update { it.copy(targetPeerId = value) } }
+    fun updateGroupTargets(value: String) { _state.update { it.copy(groupTargets = value) } }
+    fun updateRoomTitle(value: String) { _state.update { it.copy(roomTitle = value) } }
     fun updateOffer(value: String) { _state.update { it.copy(offer = value) } }
     fun updateSignalPayload(value: String) { _state.update { it.copy(signalPayload = value) } }
 
@@ -735,8 +751,25 @@ class CallsStore(private val session: NodeSessionController) {
     }
 
     suspend fun refresh() {
+        val current = state.value
         val result = session.withNode { node ->
-            state.value.copy(sessions = node.callSessions(), error = null)
+            val sessions = node.callSessions()
+            val active = node.observeActiveCall()
+            val incoming = node.observeIncomingCalls()
+            val participantsByCall = sessions.associate { session ->
+                session.callId to node.observeCallParticipants(session.callId)
+            }
+            val eventsByCall = sessions.associate { session ->
+                session.callId to node.observeCallEvents(session.callId, 16)
+            }
+            current.copy(
+                sessions = sessions,
+                activeCalls = active,
+                incomingCalls = incoming,
+                participantsByCall = participantsByCall,
+                eventsByCall = eventsByCall,
+                error = null,
+            )
         }
         _state.value = result.getOrElse { state.value.copy(error = it.message ?: "Не удалось загрузить звонки") }
     }
@@ -748,12 +781,82 @@ class CallsStore(private val session: NodeSessionController) {
             return
         }
         val result = session.withNode {
-            it.startCall(MeshStartCallCommand(targetPeerId = current.targetPeerId.trim(), offer = current.offer))
+            it.startAudioCall(MeshStartCallCommand(targetPeerId = current.targetPeerId.trim(), offer = current.offer))
         }
         _state.update {
             result.fold(
-                onSuccess = { _ -> current.copy(message = "Вызов отправлен", error = null) },
+                onSuccess = { _ -> current.copy(message = "Аудиозвонок отправлен", error = null) },
                 onFailure = { error -> it.copy(error = error.message ?: "Не удалось начать звонок") },
+            )
+        }
+        refresh()
+    }
+
+    suspend fun startVideoCall() {
+        val current = state.value
+        if (current.targetPeerId.isBlank()) {
+            _state.update { it.copy(error = "Введите peerId") }
+            return
+        }
+        val result = session.withNode {
+            it.startVideoCall(MeshStartCallCommand(targetPeerId = current.targetPeerId.trim(), offer = current.offer))
+        }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> current.copy(message = "Видеозвонок отправлен", error = null) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось начать видеозвонок") },
+            )
+        }
+        refresh()
+    }
+
+    suspend fun startGroupAudioCall() {
+        val current = state.value
+        val targets = current.groupTargets.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        if (targets.isEmpty()) {
+            _state.update { it.copy(error = "Введите peerId участников через запятую") }
+            return
+        }
+        val result = session.withNode {
+            it.startGroupAudioCall(
+                MeshStartGroupCallCommand(
+                    targetPeerIds = targets,
+                    offer = current.offer,
+                    conversationId = null,
+                    roomTitle = current.roomTitle.trim().ifBlank { null },
+                ),
+            )
+        }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> current.copy(message = "Групповой аудиозвонок создан", error = null) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось создать групповой звонок") },
+            )
+        }
+        refresh()
+    }
+
+    suspend fun startGroupVideoCall() {
+        val current = state.value
+        val targets = current.groupTargets.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        if (targets.isEmpty()) {
+            _state.update { it.copy(error = "Введите peerId участников через запятую") }
+            return
+        }
+        val result = session.withNode {
+            it.startGroupVideoCall(
+                MeshStartGroupCallCommand(
+                    targetPeerIds = targets,
+                    offer = current.offer,
+                    conversationId = null,
+                    roomTitle = current.roomTitle.trim().ifBlank { null },
+                ),
+            )
+        }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> current.copy(message = "Групповой видеозвонок создан", error = null) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось создать групповой видеозвонок") },
             )
         }
         refresh()
@@ -761,12 +864,11 @@ class CallsStore(private val session: NodeSessionController) {
 
     suspend fun accept(call: MeshCallSession) {
         session.withNode {
-            it.sendCallSignal(
-                MeshCallSignalCommand(
+            it.acceptCall(
+                MeshAcceptCallCommand(
                     callId = call.callId,
-                    recipientPeerId = call.initiatorPeerId,
-                    signalType = MeshCallSignalType.ACCEPTED,
-                    payload = state.value.signalPayload,
+                    recipientPeerId = replyPeer(call, it.profile.peerId),
+                    answer = state.value.signalPayload,
                 ),
             )
         }
@@ -775,18 +877,44 @@ class CallsStore(private val session: NodeSessionController) {
 
     suspend fun reject(call: MeshCallSession) {
         session.withNode {
-            it.sendCallSignal(
-                MeshCallSignalCommand(
+            it.rejectCall(
+                MeshRejectCallCommand(
                     callId = call.callId,
-                    recipientPeerId = call.initiatorPeerId,
-                    signalType = MeshCallSignalType.REJECTED,
-                    payload = "отклонено",
+                    recipientPeerId = replyPeer(call, it.profile.peerId),
+                    reason = "отклонено",
                 ),
             )
         }
         refresh()
     }
 
+    suspend fun join(call: MeshCallSession) {
+        session.withNode {
+            it.joinCall(
+                MeshJoinCallCommand(
+                    callId = call.callId,
+                    recipientPeerId = replyPeer(call, it.profile.peerId),
+                    answer = state.value.signalPayload,
+                ),
+            )
+        }
+        refresh()
+    }
+
+    suspend fun leave(call: MeshCallSession) {
+        session.withNode {
+            it.leaveCall(
+                MeshLeaveCallCommand(
+                    callId = call.callId,
+                    recipientPeerId = replyPeer(call, it.profile.peerId),
+                    reason = "left-from-ui",
+                ),
+            )
+        }
+        refresh()
+    }
+
+    @Suppress("DEPRECATION")
     suspend fun sendQuality(call: MeshCallSession) {
         val recipient = if (call.recipientPeerId == session.state.value.profile?.peerId) call.initiatorPeerId else call.recipientPeerId
         session.withNode {
@@ -803,11 +931,27 @@ class CallsStore(private val session: NodeSessionController) {
     }
 
     suspend fun hangup(call: MeshCallSession) {
+        session.withNode {
+            it.endCall(MeshEndCallCommand(callId = call.callId, reason = "Завершено"))
+        }
+        refresh()
+    }
+
+    @Suppress("unused", "DEPRECATION")
+    suspend fun hangupLegacy(call: MeshCallSession) {
         val recipient = if (call.recipientPeerId == session.state.value.profile?.peerId) call.initiatorPeerId else call.recipientPeerId
         session.withNode {
             it.hangupCall(MeshHangupCallCommand(callId = call.callId, recipientPeerId = recipient, reason = "Завершено"))
         }
         refresh()
+    }
+
+    private fun replyPeer(call: MeshCallSession, localPeerId: String): String {
+        return if (call.initiatorPeerId == localPeerId) {
+            call.targetPeerIds.firstOrNull { it != localPeerId } ?: call.recipientPeerId
+        } else {
+            call.initiatorPeerId
+        }
     }
 }
 

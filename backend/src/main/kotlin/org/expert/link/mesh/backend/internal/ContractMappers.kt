@@ -17,10 +17,19 @@ import org.expert.link.mesh.contract.config.MeshRelayConfig
 import org.expert.link.mesh.contract.config.MeshRetryConfig
 import org.expert.link.mesh.contract.config.MeshStaticPeer
 import org.expert.link.mesh.contract.model.MeshBlockedPeer
+import org.expert.link.mesh.contract.model.MeshCallEvent
+import org.expert.link.mesh.contract.model.MeshCallEventType
+import org.expert.link.mesh.contract.model.MeshCallInvitation
+import org.expert.link.mesh.contract.model.MeshCallParticipant
+import org.expert.link.mesh.contract.model.MeshCallParticipantState
+import org.expert.link.mesh.contract.model.MeshCallRoom
+import org.expert.link.mesh.contract.model.MeshCallScope
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignal
 import org.expert.link.mesh.contract.model.MeshCallSignalType
-import org.expert.link.mesh.contract.model.MeshCallStatus
+import org.expert.link.mesh.contract.model.MeshCallState
+import org.expert.link.mesh.contract.model.MeshCallType
+import org.expert.link.mesh.contract.model.MeshGroupCallRoom
 import org.expert.link.mesh.contract.model.MeshChatMessage
 import org.expert.link.mesh.contract.model.MeshChatMember
 import org.expert.link.mesh.contract.model.MeshChatMemberRole
@@ -58,9 +67,19 @@ import org.expert.link.mesh.contract.model.MeshRouteHop
 import org.expert.link.mesh.contract.model.MeshRouteInfo
 import org.expert.link.mesh.contract.model.MeshRouteMode
 import org.expert.link.mesh.contract.model.MeshRoutingPlan
+import org.expert.link.mesh.domain.model.call.CallEvent
+import org.expert.link.mesh.domain.model.call.CallEventType
+import org.expert.link.mesh.domain.model.call.CallInvitation
+import org.expert.link.mesh.domain.model.call.CallParticipant
+import org.expert.link.mesh.domain.model.call.CallParticipantState
+import org.expert.link.mesh.domain.model.call.CallRoom
+import org.expert.link.mesh.domain.model.call.CallScope
 import org.expert.link.mesh.domain.model.call.CallSession
 import org.expert.link.mesh.domain.model.call.CallSignal
 import org.expert.link.mesh.domain.model.call.CallSignalType
+import org.expert.link.mesh.domain.model.call.CallState
+import org.expert.link.mesh.domain.model.call.CallType
+import org.expert.link.mesh.domain.model.call.GroupCallRoom
 import org.expert.link.mesh.domain.model.call.MediaQualitySnapshot
 import org.expert.link.mesh.domain.model.diagnostics.EventCategory
 import org.expert.link.mesh.domain.model.diagnostics.EventLevel
@@ -360,28 +379,106 @@ private fun MediaQualitySnapshot.toContract(): MeshMediaQualitySnapshot = MeshMe
     capturedAt = capturedAt,
 )
 
+internal fun CallParticipant.toContract(): MeshCallParticipant = MeshCallParticipant(
+    peerId = peerId,
+    displayName = displayName,
+    state = MeshCallParticipantState.valueOf(state.name),
+    muted = muted,
+    videoEnabled = videoEnabled,
+    joinedAt = joinedAt,
+    updatedAt = updatedAt,
+)
+
+private fun CallInvitation.toContract(): MeshCallInvitation = MeshCallInvitation(
+    callId = callId,
+    roomId = roomId,
+    conversationId = conversationId,
+    initiatorPeerId = initiatorPeerId,
+    targetPeerIds = targetPeerIds,
+    callType = MeshCallType.valueOf(callType.name),
+    callScope = MeshCallScope.valueOf(callScope.name),
+    offer = offer,
+    createdAt = createdAt,
+)
+
+internal fun CallRoom.toContract(): MeshCallRoom = MeshCallRoom(
+    roomId = roomId,
+    conversationId = conversationId,
+    scope = MeshCallScope.valueOf(scope.name),
+    title = title,
+    createdByPeerId = createdByPeerId,
+    participantPeerIds = participantPeerIds,
+    activeCallId = activeCallId,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+internal fun GroupCallRoom.toContract(): MeshGroupCallRoom = MeshGroupCallRoom(
+    roomId = roomId,
+    conversationId = conversationId,
+    title = title,
+    ownerPeerId = ownerPeerId,
+    participantPeerIds = participantPeerIds,
+    activeCallId = activeCallId,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+)
+
+internal fun CallEvent.toContract(): MeshCallEvent = MeshCallEvent(
+    eventId = eventId,
+    callId = callId,
+    roomId = roomId,
+    eventType = MeshCallEventType.valueOf(eventType.name),
+    actorPeerId = actorPeerId,
+    subjectPeerId = subjectPeerId,
+    state = state?.let { MeshCallState.valueOf(it.name) },
+    participantState = participantState?.let { MeshCallParticipantState.valueOf(it.name) },
+    note = note,
+    payload = payload,
+    createdAt = createdAt,
+)
+
 internal fun CallSession.toContract(): MeshCallSession = MeshCallSession(
     callId = callId,
+    roomId = roomId,
     conversationId = conversationId,
     initiatorPeerId = initiatorPeerId,
     recipientPeerId = recipientPeerId,
-    status = MeshCallStatus.valueOf(status.name),
+    callType = MeshCallType.valueOf(callType.name),
+    callScope = MeshCallScope.valueOf(callScope.name),
+    targetPeerIds = targetPeerIds,
+    status = MeshCallState.valueOf(status.name),
+    participants = participants.map(CallParticipant::toContract),
+    invitation = invitation?.toContract(),
     createdAt = createdAt,
     updatedAt = updatedAt,
     lastSignalAt = lastSignalAt,
     qualitySnapshot = qualitySnapshot?.toContract(),
+    reconnectAttempts = reconnectAttempts,
+    metadata = metadata,
 )
 
 internal fun CallSignal.toContract(): MeshCallSignal = MeshCallSignal(
     callId = callId,
+    roomId = roomId,
     signalType = MeshCallSignalType.valueOf(signalType.name),
     senderPeerId = senderPeerId,
     recipientPeerId = recipientPeerId,
+    callType = callType?.let { MeshCallType.valueOf(it.name) },
+    callScope = callScope?.let { MeshCallScope.valueOf(it.name) },
+    participantState = participantState?.let { MeshCallParticipantState.valueOf(it.name) },
+    muted = muted,
+    videoEnabled = videoEnabled,
+    correlationId = correlationId,
     payload = payload,
     createdAt = createdAt,
 )
 
 internal fun MeshCallSignalType.toDomain(): CallSignalType = CallSignalType.valueOf(name)
+internal fun MeshCallType.toDomain(): CallType = CallType.valueOf(name)
+internal fun MeshCallScope.toDomain(): CallScope = CallScope.valueOf(name)
+internal fun MeshCallState.toDomain(): CallState = CallState.valueOf(name)
+internal fun MeshCallParticipantState.toDomain(): CallParticipantState = CallParticipantState.valueOf(name)
 
 internal fun EventLogEntry.toContract(): MeshEventLogEntry = MeshEventLogEntry(
     eventId = eventId,

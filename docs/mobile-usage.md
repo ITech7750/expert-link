@@ -72,12 +72,20 @@ val resumed = node.resumeFileTransfer(transfer.transferId)
 val cancelled = node.cancelFileTransfer(transfer.transferId)
 ```
 
-### Call signaling
+### Calls (v2)
 ```kotlin
-val call = node.startCall(command)
-val signal = node.sendCallSignal(command)
+val audio = node.startAudioCall(command)
+val video = node.startVideoCall(command)
+val group = node.startGroupVideoCall(groupCommand)
+val accepted = node.acceptCall(acceptCommand)
+val joined = node.joinCall(joinCommand)
+val left = node.leaveCall(leaveCommand)
+val ended = node.endCall(endCommand)
+val incoming = node.observeIncomingCalls()
+val active = node.observeActiveCall()
+val participants = node.observeCallParticipants(audio.callId)
+val callEvents = node.observeCallEvents(audio.callId)
 val sessions = node.callSessions()
-val result = node.hangupCall(command)
 ```
 
 ### Diagnostics

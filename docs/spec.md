@@ -106,3 +106,86 @@
 - маршруты `Group` и `Thread`;
 - экраны группы и треда;
 - thread navigation из экрана чата.
+
+## Call subsystem v2
+
+### Типы звонков
+- `startAudioCall` — 1:1 аудио;
+- `startVideoCall` — 1:1 видео;
+- `startGroupAudioCall` — групповой аудио;
+- `startGroupVideoCall` — групповой видео.
+
+### Lifecycle операции
+- `acceptCall`
+- `rejectCall`
+- `joinCall`
+- `leaveCall`
+- `endCall`
+
+### Наблюдение за состоянием
+- `callSessions`
+- `observeActiveCall`
+- `observeIncomingCalls`
+- `observeCallParticipants`
+- `observeCallEvents`
+
+### Состояния звонка
+`CallState`:
+- `NEW`
+- `INVITED`
+- `OUTGOING`
+- `INCOMING`
+- `RINGING`
+- `ACCEPTED`
+- `CONNECTING`
+- `ACTIVE`
+- `CONNECTED`
+- `RECONNECTING`
+- `ENDED`
+- `REJECTED`
+- `FAILED`
+- `MISSED`
+- `LEFT`
+
+### Сигналы
+`CallSignalType`:
+- `INVITE`
+- `ACCEPT`
+- `REJECT`
+- `JOIN`
+- `LEAVE`
+- `HANGUP`
+- `SDP_OFFER`
+- `SDP_ANSWER`
+- `ICE_CANDIDATE`
+- `RINGING`
+- `ACCEPTED`
+- `REJECTED`
+- `QUALITY`
+- `MUTE_CHANGED`
+- `VIDEO_CHANGED`
+- `PARTICIPANT_STATE`
+- `RECONNECTING`
+- `RECONNECTED`
+
+### Domain модели
+- `CallSession`
+- `CallRoom`
+- `CallParticipant`
+- `CallInvitation`
+- `CallEvent`
+
+### Storage ports
+- `CallSessionRepositoryPort`
+- `CallRoomRepositoryPort`
+- `CallParticipantRepositoryPort`
+- `CallEventRepositoryPort`
+
+### In-memory реализации
+- `InMemoryCallSessionRepositoryAdapter`
+- `InMemoryCallRoomRepositoryAdapter`
+- `InMemoryCallParticipantRepositoryAdapter`
+- `InMemoryCallEventRepositoryAdapter`
+
+### Совместимость API
+Legacy-методы `startCall`, `sendCallSignal`, `hangupCall` сохранены как совместимый слой поверх call v2.

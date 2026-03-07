@@ -5,6 +5,8 @@ import org.expert.link.mesh.contract.model.MeshBlockedPeer
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignal
 import org.expert.link.mesh.contract.model.MeshCallSignalType
+import org.expert.link.mesh.contract.model.MeshCallParticipant
+import org.expert.link.mesh.contract.model.MeshCallEvent
 import org.expert.link.mesh.contract.model.MeshChatMessage
 import org.expert.link.mesh.contract.model.MeshChatMember
 import org.expert.link.mesh.contract.model.MeshChatSummary
@@ -173,13 +175,55 @@ interface MeshNode {
     /** Возвращает call-сессии. */
     suspend fun callSessions(): List<MeshCallSession>
 
+    /** Запускает исходящий 1:1 аудиозвонок. */
+    suspend fun startAudioCall(command: MeshStartCallCommand): MeshCallSession
+
+    /** Запускает исходящий 1:1 видеозвонок. */
+    suspend fun startVideoCall(command: MeshStartCallCommand): MeshCallSession
+
+    /** Запускает исходящий групповой аудиозвонок. */
+    suspend fun startGroupAudioCall(command: MeshStartGroupCallCommand): MeshCallSession
+
+    /** Запускает исходящий групповой видеозвонок. */
+    suspend fun startGroupVideoCall(command: MeshStartGroupCallCommand): MeshCallSession
+
+    /** Принимает входящий звонок. */
+    suspend fun acceptCall(command: MeshAcceptCallCommand): MeshCallSignal
+
+    /** Отклоняет входящий звонок. */
+    suspend fun rejectCall(command: MeshRejectCallCommand): MeshCallSignal
+
+    /** Подключается к групповому звонку. */
+    suspend fun joinCall(command: MeshJoinCallCommand): MeshCallSignal
+
+    /** Выходит из группового звонка. */
+    suspend fun leaveCall(command: MeshLeaveCallCommand): MeshCallSignal
+
+    /** Завершает звонок для локального узла/комнаты. */
+    suspend fun endCall(command: MeshEndCallCommand): MeshCallSession?
+
+    /** Возвращает активные звонки (polling snapshot). */
+    suspend fun observeActiveCall(): List<MeshCallSession>
+
+    /** Возвращает входящие звонки (polling snapshot). */
+    suspend fun observeIncomingCalls(): List<MeshCallSession>
+
+    /** Возвращает участников звонка. */
+    suspend fun observeCallParticipants(callId: String): List<MeshCallParticipant>
+
+    /** Возвращает историю событий звонка. */
+    suspend fun observeCallEvents(callId: String, limit: Int = 200): List<MeshCallEvent>
+
     /** Запускает signaling звонка. */
+    @Deprecated("Используйте startAudioCall/startVideoCall")
     suspend fun startCall(command: MeshStartCallCommand): MeshCallSession
 
     /** Отправляет signaling payload звонка. */
+    @Deprecated("Используйте acceptCall/rejectCall/joinCall/leaveCall")
     suspend fun sendCallSignal(command: MeshCallSignalCommand): MeshCallSignal
 
     /** Завершает звонок. */
+    @Deprecated("Используйте endCall")
     suspend fun hangupCall(command: MeshHangupCallCommand): MeshCallSession?
 
     /** Возвращает последние события. */
@@ -246,6 +290,48 @@ data class MeshStartCallCommand(
     val targetPeerId: String,
     val offer: String,
     val conversationId: String? = null,
+)
+
+/** Команда на запуск группового звонка. */
+data class MeshStartGroupCallCommand(
+    val targetPeerIds: Set<String>,
+    val offer: String,
+    val conversationId: String? = null,
+    val roomTitle: String? = null,
+)
+
+/** Команда на принятие звонка. */
+data class MeshAcceptCallCommand(
+    val callId: String,
+    val recipientPeerId: String,
+    val answer: String,
+)
+
+/** Команда на отклонение звонка. */
+data class MeshRejectCallCommand(
+    val callId: String,
+    val recipientPeerId: String,
+    val reason: String,
+)
+
+/** Команда на подключение к звонку. */
+data class MeshJoinCallCommand(
+    val callId: String,
+    val recipientPeerId: String,
+    val answer: String = "",
+)
+
+/** Команда на выход из звонка. */
+data class MeshLeaveCallCommand(
+    val callId: String,
+    val recipientPeerId: String,
+    val reason: String = "left",
+)
+
+/** Команда на завершение звонка. */
+data class MeshEndCallCommand(
+    val callId: String,
+    val reason: String = "ended",
 )
 
 /** Команда на отправку сигнала звонка. */

@@ -1176,16 +1176,56 @@ fun CallScreen(store: CallsStore) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            SectionCard(title = "Новый звонок", subtitle = "Сейчас доступен сигнальный режим без полноценной медиа-связи") {
+            SectionCard(title = "Новый звонок", subtitle = "Аудио, видео и групповые звонки через backend-контракт") {
                 OutlinedTextField(
                     value = state.targetPeerId,
                     onValueChange = store::updateTargetPeerId,
                     label = { Text("peerId контакта") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(onClick = { scope.launch { store.startCall() } }) { Text("Позвонить") }
+                OutlinedTextField(
+                    value = state.groupTargets,
+                    onValueChange = store::updateGroupTargets,
+                    label = { Text("peerId участников (через запятую)") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = state.roomTitle,
+                    onValueChange = store::updateRoomTitle,
+                    label = { Text("Название комнаты (опционально)") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { scope.launch { store.startCall() } }) { Text("Аудио 1:1") }
+                    OutlinedButton(onClick = { scope.launch { store.startVideoCall() } }) { Text("Видео 1:1") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { scope.launch { store.startGroupAudioCall() } }) { Text("Группа аудио") }
+                    OutlinedButton(onClick = { scope.launch { store.startGroupVideoCall() } }) { Text("Группа видео") }
+                }
                 state.message?.let { StatusBanner(it, ChipTone.SUCCESS) }
                 state.error?.let { StatusBanner(it, ChipTone.ERROR) }
+            }
+        }
+        item {
+            SectionCard(title = "Входящие") {
+                if (state.incomingCalls.isEmpty()) {
+                    Text("Входящих звонков нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    state.incomingCalls.sortedByDescending { it.updatedAt }.forEach { call ->
+                        CallRow(
+                            call = call,
+                            participants = state.participantsByCall[call.callId].orEmpty(),
+                            lastEvent = state.eventsByCall[call.callId].orEmpty().lastOrNull()?.eventType?.name,
+                            onAccept = { scope.launch { store.accept(call) } },
+                            onReject = { scope.launch { store.reject(call) } },
+                            onJoin = { scope.launch { store.join(call) } },
+                            onLeave = { scope.launch { store.leave(call) } },
+                            onQuality = { scope.launch { store.sendQuality(call) } },
+                            onHangup = { scope.launch { store.hangup(call) } },
+                        )
+                    }
+                }
             }
         }
         item {
@@ -1196,8 +1236,12 @@ fun CallScreen(store: CallsStore) {
                     state.sessions.sortedByDescending { it.updatedAt }.forEach { call ->
                         CallRow(
                             call = call,
+                            participants = state.participantsByCall[call.callId].orEmpty(),
+                            lastEvent = state.eventsByCall[call.callId].orEmpty().lastOrNull()?.eventType?.name,
                             onAccept = { scope.launch { store.accept(call) } },
                             onReject = { scope.launch { store.reject(call) } },
+                            onJoin = { scope.launch { store.join(call) } },
+                            onLeave = { scope.launch { store.leave(call) } },
                             onQuality = { scope.launch { store.sendQuality(call) } },
                             onHangup = { scope.launch { store.hangup(call) } },
                         )
@@ -1211,8 +1255,12 @@ fun CallScreen(store: CallsStore) {
 @Composable
 private fun CallRow(
     call: MeshCallSession,
+    participants: List<org.expert.link.mesh.contract.model.MeshCallParticipant>,
+    lastEvent: String?,
     onAccept: () -> Unit,
     onReject: () -> Unit,
+    onJoin: () -> Unit,
+    onLeave: () -> Unit,
     onQuality: () -> Unit,
     onHangup: () -> Unit,
 ) {
@@ -1221,9 +1269,13 @@ private fun CallRow(
             Text(call.callId.shortId(12), fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BadgeChip(text = call.status.asUiText(), tone = call.status.asTone())
+                BadgeChip(text = if (call.callType.name == "VIDEO") "Видео" else "Аудио", tone = ChipTone.INFO)
+                BadgeChip(text = if (call.callScope.name == "GROUP") "Группа" else "1:1", tone = ChipTone.INFO)
                 BadgeChip(text = call.updatedAt.asUiTime(), tone = ChipTone.INFO)
             }
             InfoRow("С кем", call.recipientPeerId.shortId(10))
+            InfoRow("Участники", participants.size.toString())
+            lastEvent?.let { InfoRow("Последнее событие", it) }
             call.qualitySnapshot?.let {
                 InfoRow("RTT", "${it.rttMs} мс")
                 InfoRow("Потери", "${it.packetLossPercent}%")
@@ -1232,6 +1284,10 @@ private fun CallRow(
                 if (call.status.name in setOf("RINGING", "INVITED", "NEW")) {
                     FilledTonalButton(onClick = onAccept) { Text("Принять") }
                     OutlinedButton(onClick = onReject) { Text("Отклонить") }
+                }
+                if (call.callScope.name == "GROUP" && call.status.name in setOf("INCOMING", "RINGING", "ACCEPTED", "CONNECTING", "CONNECTED", "ACTIVE")) {
+                    OutlinedButton(onClick = onJoin) { Text("Войти") }
+                    OutlinedButton(onClick = onLeave) { Text("Выйти") }
                 }
                 OutlinedButton(onClick = onQuality) { Text("Проверить") }
                 OutlinedButton(onClick = onHangup) { Text("Завершить") }

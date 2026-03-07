@@ -35,6 +35,11 @@ import org.expert.link.mesh.bootstrap.config.NodeConfiguration
 import org.expert.link.mesh.domain.model.identity.LocalProfile
 import org.expert.link.mesh.domain.model.identity.PeerIdentity
 import org.expert.link.mesh.domain.model.messaging.OutgoingMessage
+import org.expert.link.mesh.domain.model.call.CallEvent
+import org.expert.link.mesh.domain.model.call.CallParticipant
+import org.expert.link.mesh.domain.model.call.CallSession
+import org.expert.link.mesh.domain.model.call.CallSignal
+import org.expert.link.mesh.domain.model.call.CallType
 import org.expert.link.mesh.domain.model.network.CallInvite
 import org.expert.link.mesh.domain.model.network.CallHangup
 import org.expert.link.mesh.domain.model.network.CallSignalPayload
@@ -374,6 +379,71 @@ class NodeLifecycleService(
      * Starts call signaling with a trusted peer.
      */
     suspend fun startCall(targetPeerId: String, conversationId: String? = null, offer: String) = callSignalingService.invite(targetPeerId, conversationId, offer)
+
+    /** Запускает исходящий 1:1 аудиозвонок. */
+    suspend fun startAudioCall(targetPeerId: String, conversationId: String? = null, offer: String): CallSession {
+        return callSignalingService.startDirectCall(targetPeerId, conversationId, offer, CallType.AUDIO)
+    }
+
+    /** Запускает исходящий 1:1 видеозвонок. */
+    suspend fun startVideoCall(targetPeerId: String, conversationId: String? = null, offer: String): CallSession {
+        return callSignalingService.startDirectCall(targetPeerId, conversationId, offer, CallType.VIDEO)
+    }
+
+    /** Запускает исходящий групповой аудиозвонок. */
+    suspend fun startGroupAudioCall(
+        targetPeerIds: Set<String>,
+        conversationId: String? = null,
+        offer: String,
+        roomTitle: String? = null,
+    ): CallSession {
+        return callSignalingService.startGroupCall(targetPeerIds, conversationId, offer, CallType.AUDIO, roomTitle)
+    }
+
+    /** Запускает исходящий групповой видеозвонок. */
+    suspend fun startGroupVideoCall(
+        targetPeerIds: Set<String>,
+        conversationId: String? = null,
+        offer: String,
+        roomTitle: String? = null,
+    ): CallSession {
+        return callSignalingService.startGroupCall(targetPeerIds, conversationId, offer, CallType.VIDEO, roomTitle)
+    }
+
+    /** Принимает входящий звонок. */
+    suspend fun acceptCall(callId: String, recipientPeerId: String, answer: String): CallSignal {
+        return callSignalingService.accept(callId, recipientPeerId, answer)
+    }
+
+    /** Отклоняет входящий звонок. */
+    suspend fun rejectCall(callId: String, recipientPeerId: String, reason: String): CallSignal {
+        return callSignalingService.reject(callId, recipientPeerId, reason)
+    }
+
+    /** Подключается к звонку. */
+    suspend fun joinCall(callId: String, recipientPeerId: String, answer: String): CallSignal {
+        return callSignalingService.join(callId, recipientPeerId, answer)
+    }
+
+    /** Выходит из звонка. */
+    suspend fun leaveCall(callId: String, recipientPeerId: String, reason: String): CallSignal {
+        return callSignalingService.leave(callId, recipientPeerId, reason)
+    }
+
+    /** Завершает звонок. */
+    suspend fun endCall(callId: String, reason: String): CallSession? = callSignalingService.end(callId, reason)
+
+    /** Возвращает активные звонки. */
+    suspend fun observeActiveCalls(): List<CallSession> = callSignalingService.activeSessions()
+
+    /** Возвращает входящие звонки. */
+    suspend fun observeIncomingCalls(): List<CallSession> = callSignalingService.incomingSessions()
+
+    /** Возвращает участников звонка. */
+    suspend fun observeCallParticipants(callId: String): List<CallParticipant> = callSignalingService.participants(callId)
+
+    /** Возвращает события звонка. */
+    suspend fun observeCallEvents(callId: String, limit: Int = 200): List<CallEvent> = callSignalingService.events(callId, limit)
 
     /**
      * Produces a metrics snapshot for the current node.

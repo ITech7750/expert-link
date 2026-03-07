@@ -56,6 +56,12 @@
 5. Infrastructure-реализации портов выполняют storage, discovery, transport, crypto и relay-операции.
 6. Входящий HTTP пакет проходит через `PacketRouteController` -> `PacketController` -> `NodeLifecycleService`.
 
+Call subsystem v2:
+- direct/group `audio` и `video` звонки;
+- lifecycle API: `startAudioCall`, `startVideoCall`, `startGroupAudioCall`, `startGroupVideoCall`, `acceptCall`, `rejectCall`, `joinCall`, `leaveCall`, `endCall`;
+- polling API: `observeActiveCall`, `observeIncomingCalls`, `observeCallParticipants`, `observeCallEvents`;
+- legacy API `startCall`, `sendCallSignal`, `hangupCall` оставлен для совместимости.
+
 ## Storage
 Постоянное хранение:
 - локальный профиль

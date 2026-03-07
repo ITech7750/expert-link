@@ -9,6 +9,9 @@ import org.expert.link.mesh.application.service.RoutingService
 import org.expert.link.mesh.application.service.ThreadService
 import org.expert.link.mesh.domain.port.repository.ChatMemberRepositoryPort
 import org.expert.link.mesh.domain.port.repository.BlockListRepositoryPort
+import org.expert.link.mesh.domain.port.repository.CallEventRepositoryPort
+import org.expert.link.mesh.domain.port.repository.CallParticipantRepositoryPort
+import org.expert.link.mesh.domain.port.repository.CallRoomRepositoryPort
 import org.expert.link.mesh.domain.port.repository.CallSessionRepositoryPort
 import org.expert.link.mesh.domain.port.repository.ConversationRepositoryPort
 import org.expert.link.mesh.domain.port.repository.EndpointCachePort
@@ -32,6 +35,9 @@ data class MeshNodeComponents(
     val messageRepositoryPort: MessageRepositoryPort,
     val fileTransferRepositoryPort: FileTransferRepositoryPort,
     val callSessionRepositoryPort: CallSessionRepositoryPort,
+    val callRoomRepositoryPort: CallRoomRepositoryPort,
+    val callParticipantRepositoryPort: CallParticipantRepositoryPort,
+    val callEventRepositoryPort: CallEventRepositoryPort,
     val endpointCachePort: EndpointCachePort,
     val routeRepositoryPort: RouteRepositoryPort,
     val groupChatRepositoryPort: GroupChatRepositoryPort,

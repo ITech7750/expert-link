@@ -57,6 +57,9 @@ import org.expert.link.mesh.infrastructure.adapter.InMemoryDiscoveryAdapter
 import org.expert.link.mesh.infrastructure.adapter.UdpDiscoveryAdapter
 import org.expert.link.mesh.infrastructure.repository.FileSystemChunkStorageAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryBlockListRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryCallEventRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryCallParticipantRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryCallRoomRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryCallSessionRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryConversationRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryEventLogRepositoryAdapter
@@ -106,6 +109,9 @@ class MeshNodeBootstrap {
         val dedupCachePort = InMemoryDedupCacheAdapter()
         val fileTransferRepositoryPort = InMemoryFileTransferRepositoryAdapter()
         val callSessionRepositoryPort = InMemoryCallSessionRepositoryAdapter()
+        val callRoomRepositoryPort = InMemoryCallRoomRepositoryAdapter()
+        val callParticipantRepositoryPort = InMemoryCallParticipantRepositoryAdapter()
+        val callEventRepositoryPort = InMemoryCallEventRepositoryAdapter()
         val eventLogRepositoryPort = InMemoryEventLogRepositoryAdapter()
         val groupChatRepositoryPort = InMemoryGroupChatRepositoryAdapter()
         val chatMemberRepositoryPort = InMemoryChatMemberRepositoryAdapter()
@@ -258,6 +264,9 @@ class MeshNodeBootstrap {
             packetSignatureService,
             deliveryTrackingService,
             callSessionRepositoryPort,
+            callRoomRepositoryPort,
+            callParticipantRepositoryPort,
+            callEventRepositoryPort,
             eventLogService,
             nodeMetricsService,
         )
@@ -323,6 +332,9 @@ class MeshNodeBootstrap {
             messageRepositoryPort = messageRepositoryPort,
             fileTransferRepositoryPort = fileTransferRepositoryPort,
             callSessionRepositoryPort = callSessionRepositoryPort,
+            callRoomRepositoryPort = callRoomRepositoryPort,
+            callParticipantRepositoryPort = callParticipantRepositoryPort,
+            callEventRepositoryPort = callEventRepositoryPort,
             endpointCachePort = endpointCachePort,
             routeRepositoryPort = routeRepositoryPort,
             groupChatRepositoryPort = groupChatRepositoryPort,

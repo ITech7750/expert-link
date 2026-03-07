@@ -92,10 +92,18 @@ fun MeshFileTransferStatus.asUiText(): String = when (this) {
 fun MeshCallStatus.asUiText(): String = when (this) {
     MeshCallStatus.NEW -> "Новый"
     MeshCallStatus.INVITED -> "Приглашение"
+    MeshCallStatus.OUTGOING -> "Исходящий"
+    MeshCallStatus.INCOMING -> "Входящий"
     MeshCallStatus.RINGING -> "Звонит"
+    MeshCallStatus.ACCEPTED -> "Принят"
+    MeshCallStatus.CONNECTING -> "Подключение"
     MeshCallStatus.ACTIVE -> "Разговор"
+    MeshCallStatus.CONNECTED -> "Подключён"
+    MeshCallStatus.RECONNECTING -> "Переподключение"
     MeshCallStatus.ENDED -> "Завершён"
     MeshCallStatus.REJECTED -> "Отклонён"
+    MeshCallStatus.MISSED -> "Пропущен"
+    MeshCallStatus.LEFT -> "Вышел"
     MeshCallStatus.FAILED -> "Ошибка"
 }
 
@@ -142,13 +150,21 @@ fun MeshFileTransferStatus.asTone(): ChipTone = when (this) {
 
 fun MeshCallStatus.asTone(): ChipTone = when (this) {
     MeshCallStatus.ACTIVE,
+    MeshCallStatus.CONNECTED,
+    MeshCallStatus.ACCEPTED,
     MeshCallStatus.ENDED,
     -> ChipTone.SUCCESS
     MeshCallStatus.REJECTED,
+    MeshCallStatus.MISSED,
     MeshCallStatus.FAILED,
     -> ChipTone.ERROR
+    MeshCallStatus.RECONNECTING -> ChipTone.WARNING
     MeshCallStatus.INVITED,
+    MeshCallStatus.OUTGOING,
+    MeshCallStatus.INCOMING,
     MeshCallStatus.RINGING,
+    MeshCallStatus.CONNECTING,
+    MeshCallStatus.LEFT,
     MeshCallStatus.NEW,
     -> ChipTone.INFO
 }
