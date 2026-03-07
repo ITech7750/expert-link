@@ -1,17 +1,11 @@
-import com.android.build.api.dsl.ApplicationExtension
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    id("buildsrc.convention.kotlin-multiplatform")
+    alias(libs.plugins.androidApplication)
+    id("org.jetbrains.kotlin.multiplatform")
     alias(libs.plugins.jetbrainsCompose)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.androidApplication) apply false
-}
-
-val androidSdkAvailable = System.getenv("ANDROID_SDK_ROOT") != null || System.getenv("ANDROID_HOME") != null
-if (androidSdkAvailable) {
-    apply(plugin = "com.android.application")
 }
 
 configurations.configureEach {
@@ -24,11 +18,17 @@ configurations.configureEach {
 }
 
 kotlin {
-    if (androidSdkAvailable) {
-        androidTarget {
-            compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_17)
-            }
+    jvmToolchain(17)
+
+    androidTarget {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+
+    jvm {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
         }
     }
 
@@ -51,42 +51,47 @@ kotlin {
             }
         }
 
-        if (androidSdkAvailable) {
-            val androidMain by getting {
-                dependencies {
-                    implementation(project(":backend"))
-                    implementation(libs.androidxCoreKtx)
-                    implementation(libs.androidxActivityCompose)
-                    implementation(libs.zxingCore)
-                    implementation(libs.googleWebrtc)
-                }
+        val androidMain by getting {
+            dependencies {
+                implementation(project(":backend"))
+                implementation(libs.androidxCoreKtx)
+                implementation(libs.androidxActivityCompose)
+                implementation(libs.zxingCore)
+                implementation(libs.googleWebrtc)
             }
         }
     }
 }
 
-if (androidSdkAvailable) {
-    extensions.configure<ApplicationExtension>("android") {
-        namespace = "org.expert.link.app.android"
-        compileSdk = 35
+android {
+    namespace = "org.expert.link.app.android"
+    compileSdk = 35
 
-        defaultConfig {
-            applicationId = "org.expert.link.app.android"
-            minSdk = 26
-            targetSdk = 35
-            versionCode = 1
-            versionName = "0.1.0"
-        }
+    defaultConfig {
+        applicationId = "org.expert.link.app.android"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.1.0"
+    }
 
-        buildFeatures {
-            compose = true
-        }
+    buildFeatures {
+        compose = true
+    }
 
-        compileOptions {
-            sourceCompatibility = JavaVersion.VERSION_17
-            targetCompatibility = JavaVersion.VERSION_17
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
         }
     }
+
+    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
 }
 
 compose.desktop {

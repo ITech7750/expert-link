@@ -4,6 +4,14 @@ pluginManagement {
         gradlePluginPortal()
         mavenCentral()
     }
+    plugins {
+        id("org.jetbrains.kotlin.jvm") version "2.2.20"
+        id("org.jetbrains.kotlin.multiplatform") version "2.2.20"
+        id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
+        id("org.jetbrains.kotlin.plugin.compose") version "2.2.20"
+        id("org.jetbrains.compose") version "1.10.2"
+        id("com.android.application") version "8.7.2"
+    }
 }
 
 dependencyResolutionManagement {

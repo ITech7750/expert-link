@@ -1,6 +1,10 @@
 plugins {
-    id("buildsrc.convention.kotlin-jvm")
+    id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlinSerialization)
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -12,4 +16,8 @@ dependencies {
     testImplementation(project(":backend:infra"))
     testImplementation(platform(libs.junitBom))
     testImplementation(libs.bundles.testCore)
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }
