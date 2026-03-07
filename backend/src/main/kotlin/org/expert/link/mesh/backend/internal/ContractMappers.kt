@@ -29,6 +29,15 @@ import org.expert.link.mesh.contract.model.MeshCallSignal
 import org.expert.link.mesh.contract.model.MeshCallSignalType
 import org.expert.link.mesh.contract.model.MeshCallState
 import org.expert.link.mesh.contract.model.MeshCallType
+import org.expert.link.mesh.contract.model.MeshCallMediaState
+import org.expert.link.mesh.contract.model.MeshMediaStats
+import org.expert.link.mesh.contract.model.MeshPeerMediaState
+import org.expert.link.mesh.contract.model.MeshSessionDescription
+import org.expert.link.mesh.contract.model.MeshIceCandidate
+import org.expert.link.mesh.contract.model.MeshWebRtcSignalEvent
+import org.expert.link.mesh.contract.model.MeshMediaConnectionState
+import org.expert.link.mesh.contract.model.MeshCameraFacing
+import org.expert.link.mesh.contract.model.MeshSdpType
 import org.expert.link.mesh.contract.model.MeshGroupCallRoom
 import org.expert.link.mesh.contract.model.MeshChatMessage
 import org.expert.link.mesh.contract.model.MeshChatMember
@@ -65,8 +74,19 @@ import org.expert.link.mesh.contract.model.MeshThread
 import org.expert.link.mesh.contract.model.MeshThreadMessage
 import org.expert.link.mesh.contract.model.MeshRouteHop
 import org.expert.link.mesh.contract.model.MeshRouteInfo
+import org.expert.link.mesh.contract.model.MeshRouteHealth
+import org.expert.link.mesh.contract.model.MeshRouteHealthState
 import org.expert.link.mesh.contract.model.MeshRouteMode
 import org.expert.link.mesh.contract.model.MeshRoutingPlan
+import org.expert.link.mesh.contract.model.MeshConnectivityMode
+import org.expert.link.mesh.contract.model.MeshConnectivityStrategy
+import org.expert.link.mesh.contract.model.MeshHostCandidate
+import org.expert.link.mesh.contract.model.MeshHostRole
+import org.expert.link.mesh.contract.model.MeshNetworkRoleState
+import org.expert.link.mesh.contract.model.MeshRelayMode
+import org.expert.link.mesh.contract.model.MeshTopologyEvent
+import org.expert.link.mesh.contract.model.MeshTopologyEventType
+import org.expert.link.mesh.contract.model.MeshTopologyState
 import org.expert.link.mesh.domain.model.call.CallEvent
 import org.expert.link.mesh.domain.model.call.CallEventType
 import org.expert.link.mesh.domain.model.call.CallInvitation
@@ -81,6 +101,15 @@ import org.expert.link.mesh.domain.model.call.CallState
 import org.expert.link.mesh.domain.model.call.CallType
 import org.expert.link.mesh.domain.model.call.GroupCallRoom
 import org.expert.link.mesh.domain.model.call.MediaQualitySnapshot
+import org.expert.link.mesh.domain.model.call.CallMediaState
+import org.expert.link.mesh.domain.model.call.CallMediaStats
+import org.expert.link.mesh.domain.model.call.PeerMediaState
+import org.expert.link.mesh.domain.model.call.SessionDescription
+import org.expert.link.mesh.domain.model.call.IceCandidate
+import org.expert.link.mesh.domain.model.call.WebRtcSignalEvent
+import org.expert.link.mesh.domain.model.call.MediaConnectionState
+import org.expert.link.mesh.domain.model.call.CameraFacing
+import org.expert.link.mesh.domain.model.call.SdpType
 import org.expert.link.mesh.domain.model.diagnostics.EventCategory
 import org.expert.link.mesh.domain.model.diagnostics.EventLevel
 import org.expert.link.mesh.domain.model.diagnostics.EventLogEntry
@@ -110,10 +139,21 @@ import org.expert.link.mesh.domain.model.messaging.MessageType
 import org.expert.link.mesh.domain.model.messaging.MessageReceipt
 import org.expert.link.mesh.domain.model.messaging.ThreadMessage
 import org.expert.link.mesh.domain.model.messaging.ThreadSummary
+import org.expert.link.mesh.domain.model.network.ConnectivityMode
+import org.expert.link.mesh.domain.model.network.ConnectivityStrategy
+import org.expert.link.mesh.domain.model.network.HostCandidate
+import org.expert.link.mesh.domain.model.network.HostRole
+import org.expert.link.mesh.domain.model.network.NetworkRoleState
+import org.expert.link.mesh.domain.model.network.NetworkTopologyState
+import org.expert.link.mesh.domain.model.network.RelayMode
 import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.network.PeerEndpointCandidate
+import org.expert.link.mesh.domain.model.network.RouteHealth
+import org.expert.link.mesh.domain.model.network.RouteHealthState
 import org.expert.link.mesh.domain.model.network.RouteEntry
 import org.expert.link.mesh.domain.model.network.RouteMode
+import org.expert.link.mesh.domain.model.network.TopologyEvent
+import org.expert.link.mesh.domain.model.network.TopologyEventType
 import org.expert.link.mesh.domain.model.security.BlockedPeer
 import org.expert.link.mesh.domain.model.network.EndpointSource
 
@@ -474,11 +514,116 @@ internal fun CallSignal.toContract(): MeshCallSignal = MeshCallSignal(
     createdAt = createdAt,
 )
 
+private fun PeerMediaState.toContract(): MeshPeerMediaState = MeshPeerMediaState(
+    peerId = peerId,
+    audioEnabled = audioEnabled,
+    videoEnabled = videoEnabled,
+    hasAudioTrack = hasAudioTrack,
+    hasVideoTrack = hasVideoTrack,
+    connectionState = MeshMediaConnectionState.valueOf(connectionState.name),
+)
+
+internal fun CallMediaState.toContract(): MeshCallMediaState = MeshCallMediaState(
+    callId = callId,
+    localPeerId = localPeerId,
+    localAudioEnabled = localAudioEnabled,
+    localVideoEnabled = localVideoEnabled,
+    cameraFacing = MeshCameraFacing.valueOf(cameraFacing.name),
+    connectionState = MeshMediaConnectionState.valueOf(connectionState.name),
+    peers = peers.map(PeerMediaState::toContract),
+    updatedAt = updatedAt,
+    errorMessage = errorMessage,
+)
+
+internal fun CallMediaStats.toContract(): MeshMediaStats = MeshMediaStats(
+    callId = callId,
+    rttMs = rttMs,
+    packetLossPercent = packetLossPercent,
+    jitterMs = jitterMs,
+    outboundBitrateKbps = outboundBitrateKbps,
+    inboundBitrateKbps = inboundBitrateKbps,
+    capturedAt = capturedAt,
+)
+
+internal fun SessionDescription.toContract(): MeshSessionDescription = MeshSessionDescription(
+    type = MeshSdpType.valueOf(type.name),
+    sdp = sdp,
+)
+
+internal fun IceCandidate.toContract(): MeshIceCandidate = MeshIceCandidate(
+    sdpMid = sdpMid,
+    sdpMLineIndex = sdpMLineIndex,
+    candidate = candidate,
+)
+
+internal fun WebRtcSignalEvent.toContract(): MeshWebRtcSignalEvent = MeshWebRtcSignalEvent(
+    callId = callId,
+    signalType = MeshCallSignalType.valueOf(signalType.name),
+    description = description?.toContract(),
+    iceCandidate = iceCandidate?.toContract(),
+    createdAt = createdAt,
+)
+
+internal fun MeshSessionDescription.toDomain(): SessionDescription = SessionDescription(
+    type = SdpType.valueOf(type.name),
+    sdp = sdp,
+)
+
+internal fun MeshIceCandidate.toDomain(): IceCandidate = IceCandidate(
+    sdpMid = sdpMid,
+    sdpMLineIndex = sdpMLineIndex,
+    candidate = candidate,
+)
+
+internal fun MeshWebRtcSignalEvent.toDomain(): WebRtcSignalEvent = WebRtcSignalEvent(
+    callId = callId,
+    signalType = signalType.toDomain(),
+    description = description?.toDomain(),
+    iceCandidate = iceCandidate?.toDomain(),
+    createdAt = createdAt,
+)
+
+private fun MeshPeerMediaState.toDomain(): PeerMediaState = PeerMediaState(
+    peerId = peerId,
+    audioEnabled = audioEnabled,
+    videoEnabled = videoEnabled,
+    hasAudioTrack = hasAudioTrack,
+    hasVideoTrack = hasVideoTrack,
+    connectionState = connectionState.toDomain(),
+)
+
+internal fun MeshCallMediaState.toDomain(): CallMediaState = CallMediaState(
+    callId = callId,
+    localPeerId = localPeerId,
+    localAudioEnabled = localAudioEnabled,
+    localVideoEnabled = localVideoEnabled,
+    cameraFacing = cameraFacing.toDomain(),
+    connectionState = connectionState.toDomain(),
+    peers = peers.map(MeshPeerMediaState::toDomain),
+    updatedAt = updatedAt,
+    errorMessage = errorMessage,
+)
+
+internal fun MeshMediaStats.toDomain(): CallMediaStats = CallMediaStats(
+    callId = callId,
+    rttMs = rttMs,
+    packetLossPercent = packetLossPercent,
+    jitterMs = jitterMs,
+    outboundBitrateKbps = outboundBitrateKbps,
+    inboundBitrateKbps = inboundBitrateKbps,
+    capturedAt = capturedAt,
+)
+
 internal fun MeshCallSignalType.toDomain(): CallSignalType = CallSignalType.valueOf(name)
 internal fun MeshCallType.toDomain(): CallType = CallType.valueOf(name)
 internal fun MeshCallScope.toDomain(): CallScope = CallScope.valueOf(name)
 internal fun MeshCallState.toDomain(): CallState = CallState.valueOf(name)
 internal fun MeshCallParticipantState.toDomain(): CallParticipantState = CallParticipantState.valueOf(name)
+internal fun MeshMediaConnectionState.toDomain(): MediaConnectionState = MediaConnectionState.valueOf(name)
+internal fun MeshCameraFacing.toDomain(): CameraFacing = CameraFacing.valueOf(name)
+internal fun MeshSdpType.toDomain(): SdpType = SdpType.valueOf(name)
+internal fun CallType.toContract(): MeshCallType = MeshCallType.valueOf(name)
+internal fun CallScope.toContract(): MeshCallScope = MeshCallScope.valueOf(name)
 
 internal fun EventLogEntry.toContract(): MeshEventLogEntry = MeshEventLogEntry(
     eventId = eventId,
@@ -534,3 +679,75 @@ internal fun RoutingPlan.toContract(targetPeerId: String): MeshRoutingPlan = Mes
     hops = hops.map(RouteHop::toContract),
     useRelayGateway = useRelayGateway,
 )
+
+internal fun ConnectivityStrategy.toContract(): MeshConnectivityStrategy = MeshConnectivityStrategy(
+    targetPeerId = targetPeerId,
+    routeMode = routeMode.toContract(),
+    connectivityMode = connectivityMode.toContract(),
+    relayMode = relayMode.toContract(),
+    useRelayGateway = useRelayGateway,
+    reason = reason,
+    decidedAt = decidedAt,
+)
+
+internal fun HostCandidate.toContract(): MeshHostCandidate = MeshHostCandidate(
+    peerId = peerId,
+    endpoint = endpoint?.toContract(),
+    score = score,
+    reachable = reachable,
+    roleHint = roleHint.toContract(),
+    lastSeenAt = lastSeenAt,
+)
+
+internal fun RouteHealth.toContract(): MeshRouteHealth = MeshRouteHealth(
+    targetPeerId = targetPeerId,
+    nextHopPeerId = nextHopPeerId,
+    routeMode = routeMode.toContract(),
+    state = state.toContract(),
+    failureCount = failureCount,
+    lastUpdatedAt = lastUpdatedAt,
+    expiresAt = expiresAt,
+    detail = detail,
+)
+
+internal fun TopologyEvent.toContract(): MeshTopologyEvent = MeshTopologyEvent(
+    eventId = eventId,
+    eventType = eventType.toContract(),
+    message = message,
+    peerId = peerId,
+    targetPeerId = targetPeerId,
+    detail = detail,
+    occurredAt = occurredAt,
+)
+
+internal fun NetworkRoleState.toContract(): MeshNetworkRoleState = MeshNetworkRoleState(
+    localPeerId = localPeerId,
+    localRole = localRole.toContract(),
+    currentHostPeerId = currentHostPeerId,
+    hostReachable = hostReachable,
+    failoverInProgress = failoverInProgress,
+    updatedAt = updatedAt,
+)
+
+internal fun NetworkTopologyState.toContract(): MeshTopologyState = MeshTopologyState(
+    localPeerId = localPeerId,
+    connectivityMode = connectivityMode.toContract(),
+    relayMode = relayMode.toContract(),
+    networkRoleState = networkRoleState.toContract(),
+    hostCandidates = hostCandidates.map(HostCandidate::toContract),
+    routeHealth = routeHealth.map(RouteHealth::toContract),
+    activeStrategies = activeStrategies.map(ConnectivityStrategy::toContract),
+    pendingAckCount = pendingAckCount,
+    queuedPacketCount = queuedPacketCount,
+    activeFileTransfers = activeFileTransfers,
+    activeCallSessions = activeCallSessions,
+    continuityDegraded = continuityDegraded,
+    recentEvents = recentEvents.map(TopologyEvent::toContract),
+    refreshedAt = refreshedAt,
+)
+
+internal fun RelayMode.toContract(): MeshRelayMode = MeshRelayMode.valueOf(name)
+internal fun ConnectivityMode.toContract(): MeshConnectivityMode = MeshConnectivityMode.valueOf(name)
+internal fun HostRole.toContract(): MeshHostRole = MeshHostRole.valueOf(name)
+internal fun RouteHealthState.toContract(): MeshRouteHealthState = MeshRouteHealthState.valueOf(name)
+internal fun TopologyEventType.toContract(): MeshTopologyEventType = MeshTopologyEventType.valueOf(name)

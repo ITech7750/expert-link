@@ -39,6 +39,7 @@ class RoutingService(
     private val eventLogService: EventLogService,
     private val nodeMetricsService: NodeMetricsService,
     private val forceRelayLookup: Boolean = false,
+    private val topologyStateService: TopologyStateService? = null,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -50,6 +51,7 @@ class RoutingService(
             routeRepositoryPort.findByTargetPeerId(targetPeerId)?.let { route ->
                 val endpoint = route.endpoint
                 if (endpoint != null && route.nextHopPeerId != excludePeerId) {
+                    connectivityStrategyService.observeStrategy(targetPeerId)
                     return RoutingPlan(
                         routeMode = route.routeMode,
                         hops = listOf(RouteHop(route.nextHopPeerId, endpoint, route.routeMode)),
@@ -61,6 +63,7 @@ class RoutingService(
                 .filter { it.peerId != excludePeerId }
                 .maxByOrNull { it.qualityScore }
                 ?.let { candidate ->
+                    connectivityStrategyService.observeStrategy(targetPeerId)
                     learnDirectEndpoint(targetPeerId, candidate.endpoint, candidate.capabilities)
                     return RoutingPlan(
                         routeMode = RouteMode.LOCAL_DIRECT,
@@ -99,7 +102,7 @@ class RoutingService(
                 capabilities = capabilities,
             ),
         )
-        routeRepositoryPort.save(
+        val routeEntry = routeRepositoryPort.save(
             RouteEntry(
                 targetPeerId = peerId,
                 nextHopPeerId = peerId,
@@ -111,6 +114,8 @@ class RoutingService(
                 direct = true,
             ),
         )
+        topologyStateService?.onPeerDiscovered(peerId, endpoint)
+        topologyStateService?.onRouteLearned(routeEntry)
         nodeMetricsService.increment("route.learned")
     }
 
@@ -126,7 +131,7 @@ class RoutingService(
         val nextHopPeerId = previousHopPeerId ?: sourcePeerId
         val routeMode = if (nextHopPeerId == sourcePeerId) RouteMode.LOCAL_DIRECT else RouteMode.RELAY_FLOOD
         val currentTime = now()
-        routeRepositoryPort.save(
+        val routeEntry = routeRepositoryPort.save(
             RouteEntry(
                 targetPeerId = sourcePeerId,
                 nextHopPeerId = nextHopPeerId,
@@ -138,6 +143,8 @@ class RoutingService(
                 direct = nextHopPeerId == sourcePeerId,
             ),
         )
+        topologyStateService?.onPeerDiscovered(sourcePeerId, previousHopEndpoint)
+        topologyStateService?.onRouteLearned(routeEntry)
         nodeMetricsService.increment("route.observed")
         logger.debug { "Learned route to $sourcePeerId via $nextHopPeerId" }
     }
@@ -147,6 +154,8 @@ class RoutingService(
      */
     suspend fun invalidateRoute(targetPeerId: String) {
         routeRepositoryPort.remove(targetPeerId)
+        topologyStateService?.onRouteInvalidated(targetPeerId, "route-invalidated")
+        topologyStateService?.onPeerLost(targetPeerId, "route-invalidated")
         nodeMetricsService.increment("route.invalidated")
         eventLogService.log(
             category = EventCategory.ROUTING,

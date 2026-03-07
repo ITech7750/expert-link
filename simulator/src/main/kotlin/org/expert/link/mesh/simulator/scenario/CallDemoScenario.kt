@@ -8,6 +8,8 @@ import org.expert.link.mesh.contract.api.MeshLeaveCallCommand
 import org.expert.link.mesh.contract.api.MeshRejectCallCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
 import org.expert.link.mesh.contract.api.MeshStartGroupCallCommand
+import org.expert.link.mesh.contract.api.MeshToggleCameraCommand
+import org.expert.link.mesh.contract.api.MeshToggleMicrophoneCommand
 import org.expert.link.mesh.contract.model.MeshCallSignalType
 
 /**
@@ -64,6 +66,11 @@ class CallDemoScenario(
                 ),
             )
             val activeAudio = caller.observeActiveCall().first { it.callId == audio.callId }
+            val mediaStateBefore = caller.observeMediaState(audio.callId)
+            val mediaStatsBefore = caller.observeMediaStats(audio.callId)
+            val toggledMic = caller.toggleMicrophone(MeshToggleMicrophoneCommand(audio.callId, enabled = false))
+            val toggledCam = caller.toggleCamera(MeshToggleCameraCommand(audio.callId, enabled = false))
+            val switchedCamera = caller.switchCamera(audio.callId)
             val endAudio = caller.endCall(MeshEndCallCommand(audio.callId, "audio-demo-complete"))
             ScenarioSupport.settle(350)
 
@@ -133,6 +140,11 @@ class CallDemoScenario(
                     "audio.accept.signal=${accept.signalType}",
                     "audio.quality.signal=${quality.signalType}",
                     "audio.active=${activeAudio.status}",
+                    "audio.media.before=${mediaStateBefore?.connectionState ?: "UNAVAILABLE"}",
+                    "audio.media.stats=${mediaStatsBefore?.rttMs?.toString() ?: "UNAVAILABLE"}",
+                    "audio.media.toggle.mic=${toggledMic?.localAudioEnabled?.toString() ?: "UNAVAILABLE"}",
+                    "audio.media.toggle.cam=${toggledCam?.localVideoEnabled?.toString() ?: "UNAVAILABLE"}",
+                    "audio.media.switch.camera=${switchedCamera?.cameraFacing?.name ?: "UNAVAILABLE"}",
                     "audio.end=${endAudio?.status}",
                     "video.callId=${video.callId}",
                     "video.reject.signal=${reject.signalType}",

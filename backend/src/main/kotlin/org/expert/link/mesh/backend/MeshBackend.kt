@@ -11,6 +11,7 @@ import org.expert.link.mesh.contract.api.MeshCreateThreadCommand
 import org.expert.link.mesh.contract.api.MeshEndCallCommand
 import org.expert.link.mesh.contract.api.MeshFileTransferCommand
 import org.expert.link.mesh.contract.api.MeshHangupCallCommand
+import org.expert.link.mesh.contract.api.MeshMediaEngine
 import org.expert.link.mesh.contract.api.MeshNode
 import org.expert.link.mesh.contract.api.MeshAcceptCallCommand
 import org.expert.link.mesh.contract.api.MeshJoinCallCommand
@@ -20,8 +21,11 @@ import org.expert.link.mesh.contract.api.MeshSendMessageCommand
 import org.expert.link.mesh.contract.api.MeshSendThreadMessageCommand
 import org.expert.link.mesh.contract.api.MeshStartGroupCallCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
+import org.expert.link.mesh.contract.api.MeshToggleCameraCommand
+import org.expert.link.mesh.contract.api.MeshToggleMicrophoneCommand
 import org.expert.link.mesh.contract.config.MeshNodeConfig
 import org.expert.link.mesh.contract.model.MeshBlockedPeer
+import org.expert.link.mesh.contract.model.MeshCallMediaState
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignal
 import org.expert.link.mesh.contract.model.MeshCallEvent
@@ -34,6 +38,7 @@ import org.expert.link.mesh.contract.model.MeshFileTransferSession
 import org.expert.link.mesh.contract.model.MeshGroupChat
 import org.expert.link.mesh.contract.model.MeshGroupEvent
 import org.expert.link.mesh.contract.model.MeshMetricSnapshot
+import org.expert.link.mesh.contract.model.MeshMediaStats
 import org.expert.link.mesh.contract.model.MeshMessageReceipt
 import org.expert.link.mesh.contract.model.MeshNearbyPeer
 import org.expert.link.mesh.contract.model.MeshPairingSession
@@ -41,15 +46,21 @@ import org.expert.link.mesh.contract.model.MeshPairedPeer
 import org.expert.link.mesh.contract.model.MeshPeerEndpoint
 import org.expert.link.mesh.contract.model.MeshLocalProfile
 import org.expert.link.mesh.contract.model.MeshRelayStatus
+import org.expert.link.mesh.contract.model.MeshRelayMode
 import org.expert.link.mesh.contract.model.MeshRouteInfo
+import org.expert.link.mesh.contract.model.MeshRouteHealth
 import org.expert.link.mesh.contract.model.MeshRoutingPlan
+import org.expert.link.mesh.contract.model.MeshConnectivityStrategy
+import org.expert.link.mesh.contract.model.MeshNetworkRoleState
 import org.expert.link.mesh.contract.model.MeshThread
 import org.expert.link.mesh.contract.model.MeshThreadMessage
 import org.expert.link.mesh.contract.model.MeshThreadSummary
+import org.expert.link.mesh.contract.model.MeshTopologyState
 import org.expert.link.mesh.domain.model.security.BlockedPeer
 import org.expert.link.mesh.domain.model.identity.PeerIdentity
 import org.expert.link.mesh.backend.internal.toContract
 import org.expert.link.mesh.backend.internal.toDomain
+import org.expert.link.mesh.backend.internal.toDomainPort
 import org.expert.link.mesh.backend.internal.toRuntime
 
 /**
@@ -60,8 +71,14 @@ import org.expert.link.mesh.backend.internal.toRuntime
  */
 object MeshBackend {
     /** Запускает узел и возвращает публичный facade. */
-    suspend fun launch(configuration: MeshNodeConfig): MeshNode {
-        val components = MeshNodeBootstrap().bootstrapComponents(configuration.toRuntime())
+    suspend fun launch(
+        configuration: MeshNodeConfig,
+        mediaEngine: MeshMediaEngine? = null,
+    ): MeshNode {
+        val components = MeshNodeBootstrap().bootstrapComponents(
+            configuration = configuration.toRuntime(),
+            mediaEnginePort = mediaEngine?.toDomainPort(),
+        )
         return DefaultMeshNode(components)
     }
 }
@@ -143,6 +160,30 @@ private class DefaultMeshNode(
             forceRelayLookup = settings?.forceRelayLookup == true,
             relayEligible = settings?.relayEligible == true,
         )
+    }
+
+    override suspend fun relayModeState(): MeshRelayMode {
+        return components.runtime.lifecycleService.relayModeState().toContract()
+    }
+
+    override suspend fun observeTopologyState(): MeshTopologyState {
+        return components.runtime.lifecycleService.observeTopologyState().toContract()
+    }
+
+    override suspend fun observeHostRole(): MeshNetworkRoleState {
+        return components.runtime.lifecycleService.observeHostRole().toContract()
+    }
+
+    override suspend fun observeConnectivityStrategy(peerId: String): MeshConnectivityStrategy {
+        return components.runtime.lifecycleService.observeConnectivityStrategy(peerId).toContract()
+    }
+
+    override suspend fun inspectRouteHealth(): List<MeshRouteHealth> {
+        return components.runtime.lifecycleService.inspectRouteHealth().map { it.toContract() }
+    }
+
+    override suspend fun forceTopologyRefresh(): MeshTopologyState {
+        return components.runtime.lifecycleService.forceTopologyRefresh().toContract()
     }
 
     override suspend fun rememberPeerEndpoint(peerId: String, endpoint: MeshPeerEndpoint) {
@@ -354,6 +395,26 @@ private class DefaultMeshNode(
 
     override suspend fun observeCallEvents(callId: String, limit: Int): List<MeshCallEvent> {
         return components.runtime.lifecycleService.observeCallEvents(callId, limit).map { it.toContract() }
+    }
+
+    override suspend fun toggleMicrophone(command: MeshToggleMicrophoneCommand): MeshCallMediaState? {
+        return components.runtime.lifecycleService.toggleMicrophone(command.callId, command.enabled)?.toContract()
+    }
+
+    override suspend fun toggleCamera(command: MeshToggleCameraCommand): MeshCallMediaState? {
+        return components.runtime.lifecycleService.toggleCamera(command.callId, command.enabled)?.toContract()
+    }
+
+    override suspend fun switchCamera(callId: String): MeshCallMediaState? {
+        return components.runtime.lifecycleService.switchCamera(callId)?.toContract()
+    }
+
+    override suspend fun observeMediaState(callId: String): MeshCallMediaState? {
+        return components.runtime.lifecycleService.observeMediaState(callId)?.toContract()
+    }
+
+    override suspend fun observeMediaStats(callId: String): MeshMediaStats? {
+        return components.runtime.lifecycleService.observeMediaStats(callId)?.toContract()
     }
 
     @Deprecated("Используйте startAudioCall/startVideoCall")

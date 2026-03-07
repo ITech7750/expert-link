@@ -12,6 +12,7 @@ androidGradlePlugin = "8.7.2"
 androidxActivityCompose = "1.10.1"
 androidxCore = "1.15.0"
 zxing = "3.5.3"
+googleWebrtc = "1.0.32006"
 junit = "5.11.4"
 junitPlatform = "1.11.4"
 mockk = "1.13.13"
@@ -41,6 +42,7 @@ assertjCore = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 androidxActivityCompose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivityCompose" }
 androidxCoreKtx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 zxingCore = { module = "com.google.zxing:core", version.ref = "zxing" }
+googleWebrtc = { module = "org.webrtc:google-webrtc", version.ref = "googleWebrtc" }
 
 [bundles]
 kotlinxCore = ["kotlinxDatetime", "kotlinxSerializationJson", "kotlinxCoroutinesCore"]

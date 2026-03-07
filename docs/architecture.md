@@ -75,6 +75,60 @@
 - `app-shared` использует только `MeshNode` и contract-модели.
 - Внутренние `backend:data/application/infra/runtime` классы в UI/Simulator напрямую не используются.
 
+## Topology и Connectivity подсистема
+
+### Domain модели
+- `NetworkTopologyState` — полный runtime-снимок топологии.
+- `NetworkRoleState` — роль узла и текущий выбранный хост.
+- `HostRole`, `HostCandidate` — модель хоста и кандидатов.
+- `RouteHealth`, `RouteHealthState` — состояние маршрутов.
+- `ConnectivityMode`, `ConnectivityStrategy` — стратегия связности.
+- `RelayMode` — состояние relay/proxy fallback.
+- `TopologyEvent` / `TopologyEventType` — события перестройки сети.
+
+### Application сервисы
+- `TopologyStateService`:
+  - агрегирует topology snapshot;
+  - отслеживает host election/failover;
+  - фиксирует route health и continuity degradation/recovery;
+  - возвращает стратегию связности и relay mode.
+- `RoutingService`:
+  - обучает маршруты и передаёт изменения в `TopologyStateService`;
+  - инвалидирует маршруты при деградации доставки.
+- `DiscoveryOrchestrationService`:
+  - передаёт события обнаружения/потери узлов в `TopologyStateService`.
+- `RelayService` и `DeliveryTrackingService`:
+  - передают результат доставки для обновления route health и relay state.
+- `ConnectivityStrategyService`:
+  - выбирает стратегию (`LOCAL_DIRECT` / `RELAY_FLOOD` / `RENDEZVOUS_*`);
+  - хранит snapshots активных стратегий для topology.
+
+### Runtime wiring
+- `MeshNodeBootstrap` создаёт `TopologyStateService` и передаёт его в:
+  - `RoutingService`
+  - `DiscoveryOrchestrationService`
+  - `RelayService`
+  - `DeliveryTrackingService`
+  - `NodeLifecycleService`
+- `NodeLifecycleService.start()` инициализирует topology с локальным endpoint и relay mode из config.
+- `rememberPeerEndpoint`/`forgetPeerEndpoint` обновляют topology state.
+
+### Contract API
+`MeshNode` предоставляет topology-интерфейс:
+- `observeTopologyState`
+- `observeHostRole`
+- `observeConnectivityStrategy`
+- `inspectRouteHealth`
+- `relayModeState`
+- `forceTopologyRefresh`
+
+### Инфраструктура relay/proxy
+- `RendezvousRelayClient` реализует:
+  - регистрацию/heartbeat/lookup/unregister;
+  - relay candidate selection;
+  - stale cleanup для registration записей;
+  - relay-aware lookup (`relayOnly`, `directEndpoints`, `relayCandidates`).
+
 ## Call подсистема (v2)
 
 ### Domain модели
@@ -94,6 +148,12 @@
   - обрабатывает `invite`, `accept/reject`, `join/leave`, `hangup`;
   - ведёт state machine звонка;
   - сохраняет участников и события.
+- `CallMediaService`:
+  - управляет WebRTC media lifecycle;
+  - создаёт/закрывает media-сессии по `callId`;
+  - применяет входящие `SDP/ICE` к media session;
+  - отправляет исходящие `SDP/ICE` через `CallSignalingService`;
+  - синхронизирует `mute/camera` состояния.
 
 ### Signaling поток
 1. `MeshNode` вызывает call-метод контракта.
@@ -102,6 +162,15 @@
 4. `CallSignalingService` формирует `PacketEnvelope` c payload `CALL_INVITE`/`CALL_SIGNAL`/`CALL_HANGUP`.
 5. На принимающей стороне `PacketController -> NodeLifecycleService` вызывает `handleInvite`/`handleSignal`/`handleHangup`.
 6. Состояния, участники и события сохраняются через call repository ports.
+
+### Media поток (WebRTC)
+1. `MeshNode.start*Call` вызывает `NodeLifecycleService.start*Call`.
+2. `NodeLifecycleService` делегирует в `CallMediaService`.
+3. `CallMediaService` запускает signaling invite через `CallSignalingService`.
+4. При наличии media backend (`MediaEnginePort.isSupported=true`) открывается `WebRtcSessionPort`.
+5. `SDP_OFFER/SDP_ANSWER/ICE_CANDIDATE` конвертируются в `CALL_SIGNAL` пакеты.
+6. На принимающей стороне `CallMediaService.handleSignal` применяет SDP/ICE к локальной media session.
+7. `toggleMicrophone`/`toggleCamera`/`switchCamera` обновляют media state и синхронизируются signaling-сигналами.
 
 ### Infrastructure реализации
 - `InMemoryCallSessionRepositoryAdapter`
@@ -114,5 +183,11 @@
 - запуск: `startAudioCall`, `startVideoCall`, `startGroupAudioCall`, `startGroupVideoCall`;
 - действия: `acceptCall`, `rejectCall`, `joinCall`, `leaveCall`, `endCall`;
 - чтение состояний: `observeActiveCall`, `observeIncomingCalls`, `observeCallParticipants`, `observeCallEvents`.
+- media control: `toggleMicrophone`, `toggleCamera`, `switchCamera`.
+- media snapshots: `observeMediaState`, `observeMediaStats`.
 
 Legacy методы `startCall`, `sendCallSignal`, `hangupCall` оставлены для совместимости.
+
+### Platform media adapters
+- Android host: `AndroidWebRtcMediaEngineAdapter` (реальный WebRTC backend через `org.webrtc:google-webrtc`).
+- Desktop host: `DesktopWebRtcMediaEngineAdapter` (`isSupported=false`, signaling работает, media backend не подключён).

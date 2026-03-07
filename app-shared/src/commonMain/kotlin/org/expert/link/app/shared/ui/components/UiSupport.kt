@@ -37,12 +37,16 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.expert.link.app.shared.platform.QrCodeMatrix
 import org.expert.link.mesh.contract.model.MeshCallStatus
+import org.expert.link.mesh.contract.model.MeshConnectivityMode
 import org.expert.link.mesh.contract.model.MeshEndpointSource
 import org.expert.link.mesh.contract.model.MeshEventCategory
 import org.expert.link.mesh.contract.model.MeshFileTransferSession
 import org.expert.link.mesh.contract.model.MeshFileTransferStatus
+import org.expert.link.mesh.contract.model.MeshHostRole
 import org.expert.link.mesh.contract.model.MeshMessageDeliveryStatus
+import org.expert.link.mesh.contract.model.MeshRelayMode
 import org.expert.link.mesh.contract.model.MeshRouteMode
+import org.expert.link.mesh.contract.model.MeshRouteHealthState
 import org.expert.link.mesh.contract.model.MeshTrustState
 
 /** Короткий вид длинного идентификатора. */
@@ -110,9 +114,37 @@ fun MeshCallStatus.asUiText(): String = when (this) {
 fun MeshRouteMode.asUiText(): String = when (this) {
     MeshRouteMode.LOCAL_DIRECT -> "Напрямую"
     MeshRouteMode.RELAY_FLOOD -> "Через узлы"
-    MeshRouteMode.OVERLAY_DIRECT -> "Overlay"
+    MeshRouteMode.OVERLAY_DIRECT -> "Overlay напрямую"
     MeshRouteMode.RENDEZVOUS_DIRECT_CANDIDATE -> "Кандидат"
     MeshRouteMode.RENDEZVOUS_RELAY -> "Через relay"
+}
+
+fun MeshHostRole.asUiText(): String = when (this) {
+    MeshHostRole.HOST -> "Хост"
+    MeshHostRole.MEMBER -> "Участник"
+    MeshHostRole.CANDIDATE -> "Кандидат"
+    MeshHostRole.UNKNOWN -> "Не определено"
+}
+
+fun MeshConnectivityMode.asUiText(): String = when (this) {
+    MeshConnectivityMode.LOCAL_MESH -> "Локальная mesh"
+    MeshConnectivityMode.HOST_ROUTED -> "Через хост"
+    MeshConnectivityMode.RELAY_PROXY -> "Через relay/proxy"
+    MeshConnectivityMode.DEGRADED -> "Деградация"
+}
+
+fun MeshRelayMode.asUiText(): String = when (this) {
+    MeshRelayMode.DISABLED -> "Выключен"
+    MeshRelayMode.STANDBY -> "Ожидание"
+    MeshRelayMode.ACTIVE_FALLBACK -> "Fallback"
+    MeshRelayMode.FORCED -> "Принудительный"
+}
+
+fun MeshRouteHealthState.asUiText(): String = when (this) {
+    MeshRouteHealthState.HEALTHY -> "Нормально"
+    MeshRouteHealthState.DEGRADED -> "Деградация"
+    MeshRouteHealthState.STALE -> "Устарел"
+    MeshRouteHealthState.FAILED -> "Ошибка"
 }
 
 fun MeshEventCategory.asUiText(): String = when (this) {

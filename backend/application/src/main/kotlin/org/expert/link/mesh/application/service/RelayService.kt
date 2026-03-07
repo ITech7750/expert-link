@@ -14,6 +14,7 @@ class RelayService(
     private val routingService: RoutingService,
     private val eventLogService: EventLogService,
     private val nodeMetricsService: NodeMetricsService,
+    private val topologyStateService: TopologyStateService? = null,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -44,6 +45,12 @@ class RelayService(
             if (success) {
                 nodeMetricsService.increment("relay.gateway.success")
             }
+            topologyStateService?.onDeliveryResult(
+                targetPeerId = envelope.targetPeerId,
+                routeMode = relayEnvelope.routeMode,
+                success = success,
+                viaRelayGateway = true,
+            )
             return success
         }
 
@@ -65,6 +72,12 @@ class RelayService(
                 packetId = envelope.packetId,
             )
         }
+        topologyStateService?.onDeliveryResult(
+            targetPeerId = envelope.targetPeerId,
+            routeMode = plan.routeMode,
+            success = forwarded,
+            viaRelayGateway = false,
+        )
         return forwarded
     }
 }

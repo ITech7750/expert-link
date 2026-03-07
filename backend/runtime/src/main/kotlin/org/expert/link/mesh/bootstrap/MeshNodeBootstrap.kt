@@ -13,6 +13,7 @@ import org.expert.link.mesh.application.factory.KeyMaterialFactory
 import org.expert.link.mesh.application.factory.PacketEnvelopeFactory
 import org.expert.link.mesh.application.service.BlockListService
 import org.expert.link.mesh.application.service.CallSignalingService
+import org.expert.link.mesh.application.service.CallMediaService
 import org.expert.link.mesh.application.service.ChatMessagingService
 import org.expert.link.mesh.application.service.ConnectivityStrategyService
 import org.expert.link.mesh.application.service.DeduplicationService
@@ -36,6 +37,7 @@ import org.expert.link.mesh.application.service.RetrySchedulerService
 import org.expert.link.mesh.application.service.RoutingService
 import org.expert.link.mesh.application.service.SecurityIncidentService
 import org.expert.link.mesh.application.service.ThreadService
+import org.expert.link.mesh.application.service.TopologyStateService
 import org.expert.link.mesh.bootstrap.config.NodeConfiguration
 import org.expert.link.mesh.controller.PacketController
 import org.expert.link.mesh.controller.PacketRouteController
@@ -77,6 +79,8 @@ import org.expert.link.mesh.infrastructure.repository.InMemoryThreadRepositoryAd
 import org.expert.link.mesh.infrastructure.repository.InMemoryChatMemberRepositoryAdapter
 import org.expert.link.mesh.infrastructure.adapter.InMemoryPacketTransportAdapter
 import org.expert.link.mesh.infrastructure.adapter.KtorPacketTransportAdapter
+import org.expert.link.mesh.infrastructure.adapter.NoopMediaEngineAdapter
+import org.expert.link.mesh.domain.port.external.MediaEnginePort
 
 /** Сборщик runtime узла.
  *
@@ -87,14 +91,20 @@ class MeshNodeBootstrap {
     /**
      * Creates, starts and returns a fully wired node runtime.
      */
-    suspend fun bootstrap(configuration: NodeConfiguration): MeshNodeRuntime {
-        return bootstrapComponents(configuration).runtime
+    suspend fun bootstrap(
+        configuration: NodeConfiguration,
+        mediaEnginePort: MediaEnginePort? = null,
+    ): MeshNodeRuntime {
+        return bootstrapComponents(configuration, mediaEnginePort).runtime
     }
 
     /**
      * Creates, starts and returns the complete runtime plus internal services required by the public facade.
      */
-    suspend fun bootstrapComponents(configuration: NodeConfiguration): MeshNodeComponents {
+    suspend fun bootstrapComponents(
+        configuration: NodeConfiguration,
+        mediaEnginePort: MediaEnginePort? = null,
+    ): MeshNodeComponents {
         val localProfileRepositoryPort = InMemoryLocalProfileRepositoryAdapter()
         val peerRepositoryPort = InMemoryPeerRepositoryAdapter()
         val pairingSessionRepositoryPort = InMemoryPairingSessionRepositoryAdapter()
@@ -112,6 +122,7 @@ class MeshNodeBootstrap {
         val callRoomRepositoryPort = InMemoryCallRoomRepositoryAdapter()
         val callParticipantRepositoryPort = InMemoryCallParticipantRepositoryAdapter()
         val callEventRepositoryPort = InMemoryCallEventRepositoryAdapter()
+        val effectiveMediaEnginePort = mediaEnginePort ?: NoopMediaEngineAdapter()
         val eventLogRepositoryPort = InMemoryEventLogRepositoryAdapter()
         val groupChatRepositoryPort = InMemoryGroupChatRepositoryAdapter()
         val chatMemberRepositoryPort = InMemoryChatMemberRepositoryAdapter()
@@ -160,6 +171,15 @@ class MeshNodeBootstrap {
             relayClient,
             configuration.relayClientSettings?.forceRelayLookup == true,
         )
+        val topologyStateService = TopologyStateService(
+            routeRepositoryPort = routeRepositoryPort,
+            endpointCachePort = endpointCachePort,
+            pendingAckRepositoryPort = pendingAckRepositoryPort,
+            outgoingQueuePort = outgoingQueuePort,
+            fileTransferRepositoryPort = fileTransferRepositoryPort,
+            callSessionRepositoryPort = callSessionRepositoryPort,
+            connectivityStrategyService = liveConnectivityStrategyService,
+        )
         val liveRoutingService = RoutingService(
             routeRepositoryPort,
             endpointCachePort,
@@ -167,6 +187,7 @@ class MeshNodeBootstrap {
             eventLogService,
             nodeMetricsService,
             configuration.relayClientSettings?.forceRelayLookup == true,
+            topologyStateService,
         )
         val deliveryTrackingService = DeliveryTrackingService(
             packetTransportPort,
@@ -178,8 +199,16 @@ class MeshNodeBootstrap {
             retryPolicyService,
             eventLogService,
             nodeMetricsService,
+            topologyStateService,
         )
-        val relayService = RelayService(packetTransportPort, relayClient, liveRoutingService, eventLogService, nodeMetricsService)
+        val relayService = RelayService(
+            packetTransportPort,
+            relayClient,
+            liveRoutingService,
+            eventLogService,
+            nodeMetricsService,
+            topologyStateService,
+        )
         val retrySchedulerService = RetrySchedulerService(deliveryTrackingService, configuration.retrySettings.pollIntervalMillis)
         val discoveryPort = when {
             !configuration.featureFlags.discoveryEnabled -> null
@@ -187,7 +216,14 @@ class MeshNodeBootstrap {
             else -> UdpDiscoveryAdapter(configuration.discoveryPort, configuration.multicastGroup, JvmMulticastSupportAdapter())
         }
         val discoveryOrchestrationService = discoveryPort?.let {
-            DiscoveryOrchestrationService(cryptoPort, endpointCachePort, liveRoutingService, eventLogService, nodeMetricsService)
+            DiscoveryOrchestrationService(
+                cryptoPort,
+                endpointCachePort,
+                liveRoutingService,
+                eventLogService,
+                nodeMetricsService,
+                topologyStateService,
+            )
         }
 
         val fileTransferService = FileTransferService(
@@ -270,6 +306,13 @@ class MeshNodeBootstrap {
             eventLogService,
             nodeMetricsService,
         )
+        val callMediaService = CallMediaService(
+            localProfileService = localProfileService,
+            callSignalingService = callSignalingService,
+            mediaEnginePort = effectiveMediaEnginePort,
+            eventLogService = eventLogService,
+            nodeMetricsService = nodeMetricsService,
+        )
 
         var server: ApplicationEngine? = null
         lateinit var lifecycleService: NodeLifecycleService
@@ -282,6 +325,7 @@ class MeshNodeBootstrap {
             chatMessagingService = chatMessagingService,
             fileTransferService = fileTransferService,
             callSignalingService = callSignalingService,
+            callMediaService = callMediaService,
             discoveryPort = discoveryPort,
             discoveryOrchestrationService = discoveryOrchestrationService,
             reversePathRepositoryPort = reversePathRepositoryPort,
@@ -300,6 +344,7 @@ class MeshNodeBootstrap {
             nodeMetricsService = nodeMetricsService,
             securityIncidentService = securityIncidentService,
             rendezvousRegistryPort = relayClient,
+            topologyStateService = topologyStateService,
             onStart = { server?.start(wait = false) },
             onStop = { server?.stop(1_000, 1_000) },
         )
@@ -348,7 +393,10 @@ class MeshNodeBootstrap {
             threadService = threadService,
             fileTransferService = fileTransferService,
             callSignalingService = callSignalingService,
+            callMediaService = callMediaService,
             routingService = liveRoutingService,
+            topologyStateService = topologyStateService,
+            connectivityStrategyService = liveConnectivityStrategyService,
         )
     }
 

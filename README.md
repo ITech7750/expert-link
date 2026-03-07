@@ -60,7 +60,25 @@ Call subsystem v2:
 - direct/group `audio` и `video` звонки;
 - lifecycle API: `startAudioCall`, `startVideoCall`, `startGroupAudioCall`, `startGroupVideoCall`, `acceptCall`, `rejectCall`, `joinCall`, `leaveCall`, `endCall`;
 - polling API: `observeActiveCall`, `observeIncomingCalls`, `observeCallParticipants`, `observeCallEvents`;
+- media API: `toggleMicrophone`, `toggleCamera`, `switchCamera`, `observeMediaState`, `observeMediaStats`;
 - legacy API `startCall`, `sendCallSignal`, `hangupCall` оставлен для совместимости.
+
+WebRTC media integration:
+- backend использует `CallMediaService` как мост между signaling и media engine;
+- domain media-порты: `MediaEnginePort`, `WebRtcSessionPort`, `AudioCapturePort`, `VideoCapturePort`, `MediaRendererPort`;
+- публичный platform contract: `MeshMediaEngine`, `MeshWebRtcSession`;
+- запуск backend с media: `MeshBackend.launch(config, mediaEngine = ...)`;
+- Android: реализован `AndroidWebRtcMediaEngineAdapter` (real `org.webrtc` PeerConnection, SDP/ICE, audio/video tracks, media state/stats);
+- Desktop: `DesktopWebRtcMediaEngineAdapter` оставлен как честный boundary (`isSupported=false`) до подключения native desktop media backend.
+
+Topology/connectivity subsystem:
+- topology snapshot API: `observeTopologyState`, `forceTopologyRefresh`;
+- host role API: `observeHostRole`;
+- route health API: `inspectRouteHealth`;
+- strategy API: `observeConnectivityStrategy(peerId)`;
+- relay mode API: `relayModeState`;
+- runtime-сервисы `RoutingService`, `DiscoveryOrchestrationService`, `RelayService`, `DeliveryTrackingService` публикуют изменения в `TopologyStateService`;
+- поддержаны сценарии: локальная mesh-сеть, host failover, route rebuild, relay/proxy fallback через `RendezvousRelayClient`.
 
 ## Storage
 Постоянное хранение:

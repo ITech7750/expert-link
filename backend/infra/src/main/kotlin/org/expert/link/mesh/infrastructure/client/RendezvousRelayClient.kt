@@ -35,18 +35,37 @@ class RendezvousRelayClient(
     }
 
     override suspend fun findPeer(peerId: String): PeerLookupResult? {
+        evictStaleRegistrations()
         val registration = registrations[peerId] ?: return null
+        val relayCandidates = registrations.values
+            .asSequence()
+            .filter { it.peerId != peerId && it.relayEligible }
+            .mapNotNull { relay ->
+                relay.endpoints.firstOrNull()?.let { endpoint ->
+                    RelayRouteCandidate(
+                        targetPeerId = peerId,
+                        relayPeerId = relay.peerId,
+                        endpoint = endpoint,
+                        expiresAt = relay.lastHeartbeatAt,
+                    )
+                }
+            }
+            .toList()
         return if (forceRelayLookup) {
             PeerLookupResult(
                 peerId = peerId,
-                relayCandidates = listOf(
-                    RelayRouteCandidate(
-                        targetPeerId = peerId,
-                        relayPeerId = registration.peerId,
-                        endpoint = registration.endpoints.firstOrNull(),
-                        expiresAt = registration.lastHeartbeatAt,
-                    ),
-                ),
+                relayCandidates = relayCandidates.ifEmpty {
+                    registration.endpoints.firstOrNull()?.let {
+                        listOf(
+                            RelayRouteCandidate(
+                                targetPeerId = peerId,
+                                relayPeerId = registration.peerId,
+                                endpoint = it,
+                                expiresAt = registration.lastHeartbeatAt,
+                            ),
+                        )
+                    }.orEmpty()
+                },
                 foundAt = kotlinx.datetime.Clock.System.now(),
                 relayOnly = true,
             )
@@ -54,15 +73,9 @@ class RendezvousRelayClient(
             PeerLookupResult(
                 peerId = peerId,
                 directEndpoints = registration.endpoints,
-                relayCandidates = if (registration.relayEligible) {
-                    registration.endpoints.firstOrNull()?.let {
-                        listOf(RelayRouteCandidate(peerId, registration.peerId, it, expiresAt = registration.lastHeartbeatAt))
-                    }.orEmpty()
-                } else {
-                    emptyList()
-                },
+                relayCandidates = relayCandidates,
                 foundAt = kotlinx.datetime.Clock.System.now(),
-                relayOnly = false,
+                relayOnly = registration.endpoints.isEmpty(),
             )
         }
     }
@@ -72,6 +85,7 @@ class RendezvousRelayClient(
     }
 
     override suspend fun relayPacket(targetPeerId: String, envelope: PacketEnvelope): TransportDeliveryResult {
+        evictStaleRegistrations()
         val registration = registrations[targetPeerId]
             ?: return TransportDeliveryResult(success = false, errorMessage = "Target is not registered in rendezvous registry")
         val endpoint = registration.endpoints.firstOrNull()
@@ -82,5 +96,13 @@ class RendezvousRelayClient(
 
     companion object StubRegistry {
         private val registrations = ConcurrentHashMap<String, PeerRegistration>()
+        private const val HEARTBEAT_TTL_MILLIS: Long = 45_000
+
+        private fun evictStaleRegistrations() {
+            val now = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+            registrations.entries.removeIf { (_, registration) ->
+                now - registration.lastHeartbeatAt.toEpochMilliseconds() > HEARTBEAT_TTL_MILLIS
+            }
+        }
     }
 }

@@ -211,3 +211,91 @@ data class MeshCallSignal(
     val payload: String,
     val createdAt: Instant,
 )
+
+/** Тип SDP-описания. */
+@Serializable
+enum class MeshSdpType {
+    OFFER,
+    ANSWER,
+}
+
+/** Состояние media-соединения. */
+@Serializable
+enum class MeshMediaConnectionState {
+    NEW,
+    CONNECTING,
+    CONNECTED,
+    DISCONNECTED,
+    FAILED,
+    CLOSED,
+}
+
+/** Направление локальной камеры. */
+@Serializable
+enum class MeshCameraFacing {
+    FRONT,
+    BACK,
+    UNKNOWN,
+}
+
+/** SDP-описание для публичного media-контракта. */
+@Serializable
+data class MeshSessionDescription(
+    val type: MeshSdpType,
+    val sdp: String,
+)
+
+/** ICE-кандидат для публичного media-контракта. */
+@Serializable
+data class MeshIceCandidate(
+    val sdpMid: String?,
+    val sdpMLineIndex: Int,
+    val candidate: String,
+)
+
+/** Media-состояние участника звонка. */
+@Serializable
+data class MeshPeerMediaState(
+    val peerId: String,
+    val audioEnabled: Boolean,
+    val videoEnabled: Boolean,
+    val hasAudioTrack: Boolean,
+    val hasVideoTrack: Boolean,
+    val connectionState: MeshMediaConnectionState,
+)
+
+/** Снимок media-состояния звонка. */
+@Serializable
+data class MeshCallMediaState(
+    val callId: String,
+    val localPeerId: String,
+    val localAudioEnabled: Boolean,
+    val localVideoEnabled: Boolean,
+    val cameraFacing: MeshCameraFacing,
+    val connectionState: MeshMediaConnectionState,
+    val peers: List<MeshPeerMediaState>,
+    val updatedAt: Instant,
+    val errorMessage: String? = null,
+)
+
+/** Снимок media-метрик звонка. */
+@Serializable
+data class MeshMediaStats(
+    val callId: String,
+    val rttMs: Int,
+    val packetLossPercent: Double,
+    val jitterMs: Int,
+    val outboundBitrateKbps: Int,
+    val inboundBitrateKbps: Int,
+    val capturedAt: Instant,
+)
+
+/** Исходящее сигнальное событие от platform media-engine. */
+@Serializable
+data class MeshWebRtcSignalEvent(
+    val callId: String,
+    val signalType: MeshCallSignalType,
+    val description: MeshSessionDescription? = null,
+    val iceCandidate: MeshIceCandidate? = null,
+    val createdAt: Instant,
+)

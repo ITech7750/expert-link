@@ -4,7 +4,11 @@ import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.awt.Desktop
 import java.io.File
+import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import org.expert.link.app.shared.platform.AppPlatformServices
 import org.expert.link.app.shared.platform.PlatformCapabilities
 import org.expert.link.app.shared.platform.QrCodeMatrix
@@ -18,12 +22,13 @@ class DesktopPlatformServices(
     private val args: List<String>,
 ) : AppPlatformServices {
     private val memoryMode: Boolean = args.any { it == "--memory" }
+    private val mediaEngine = DesktopWebRtcMediaEngineAdapter()
 
     override val platformName: String = "Рабочий стол"
     override val transportHint: String = if (memoryMode) "Локальная проверка" else "Полная сеть"
     override val capabilities: PlatformCapabilities = PlatformCapabilities(
         canCopyText = true,
-        canShareText = false,
+        canShareText = true,
         canRenderQr = true,
         canScanQr = false,
         canPickFile = true,
@@ -52,11 +57,23 @@ class DesktopPlatformServices(
         }
     }
 
-    override suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(config)
+    override suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(config, mediaEngine = mediaEngine)
 
     override suspend fun copyText(label: String, text: String): Result<Unit> = runCatching {
         val clipboard = Toolkit.getDefaultToolkit().systemClipboard
         clipboard.setContents(StringSelection(text), null)
+    }
+
+    override suspend fun shareText(label: String, text: String): Result<Unit> = runCatching {
+        val encodedSubject = URLEncoder.encode(label, StandardCharsets.UTF_8.toString())
+        val encodedBody = URLEncoder.encode(text, StandardCharsets.UTF_8.toString())
+        val uri = URI("mailto:?subject=$encodedSubject&body=$encodedBody")
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.MAIL)) {
+            Desktop.getDesktop().mail(uri)
+        } else {
+            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+            clipboard.setContents(StringSelection(text), null)
+        }
     }
 
     override suspend fun pickFile(): Result<String?> = runCatching {

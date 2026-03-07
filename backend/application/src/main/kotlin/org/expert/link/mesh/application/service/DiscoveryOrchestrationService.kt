@@ -23,6 +23,7 @@ class DiscoveryOrchestrationService(
     private val routingService: RoutingService,
     private val eventLogService: EventLogService,
     private val nodeMetricsService: NodeMetricsService,
+    private val topologyStateService: TopologyStateService? = null,
 ) {
     /**
      * Processes a discovery frame and returns follow-up actions for the node runtime.
@@ -58,6 +59,11 @@ class DiscoveryOrchestrationService(
                     ),
                 )
                 routingService.learnDirectEndpoint(frame.sourcePeerId, frame.endpoint, frame.capabilities)
+                topologyStateService?.onPeerDiscovered(
+                    peerId = frame.sourcePeerId,
+                    endpoint = frame.endpoint,
+                    qualityScore = 100,
+                )
                 nodeMetricsService.increment("discovery.learned")
                 eventLogService.log(
                     category = EventCategory.DISCOVERY,
@@ -67,6 +73,7 @@ class DiscoveryOrchestrationService(
                 )
             }
             DiscoveryMessageType.NODE_BYE -> {
+                topologyStateService?.onPeerLost(frame.sourcePeerId, "discovery-bye")
                 eventLogService.log(
                     category = EventCategory.DISCOVERY,
                     level = EventLevel.INFO,

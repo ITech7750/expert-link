@@ -100,6 +100,8 @@ private enum class DiagnosticsSection(val title: String) {
     EVENTS("События"),
     METRICS("Метрики"),
     NETWORK("Сеть"),
+    SECURITY("Безопасность"),
+    TOPOLOGY("Топология"),
 }
 
 @Composable
@@ -195,11 +197,23 @@ fun HomeScreen(
                                     tone = if (it.enabled) ChipTone.SUCCESS else ChipTone.WARNING,
                                 )
                             }
+                            state.relayMode?.let { BadgeChip("Режим: ${it.asUiText()}", ChipTone.INFO) }
                         }
                         state.error?.let { StatusBanner(it, ChipTone.ERROR) }
                     }
                 },
             )
+        }
+        item {
+            state.topology?.let { topology ->
+                SectionCard(title = "Состояние сети", subtitle = "Роль узла и устойчивость маршрутов") {
+                    InfoRow("Связность", topology.connectivityMode.asUiText())
+                    InfoRow("Роль", topology.networkRoleState.localRole.asUiText())
+                    InfoRow("Хост", topology.networkRoleState.currentHostPeerId?.shortId(12) ?: "не выбран")
+                    InfoRow("Failover", if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет")
+                    InfoRow("Нездоровые маршруты", topology.routeHealth.count { it.state != org.expert.link.mesh.contract.model.MeshRouteHealthState.HEALTHY }.toString())
+                }
+            }
         }
         item {
             SectionCard(title = "Быстрые действия", subtitle = "Самые частые действия на одном экране") {
@@ -309,8 +323,15 @@ fun PairingScreen(
                             Button(onClick = { scope.launch { store.pair() } }) { Text("Подключить") }
                             OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
                         }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { onShowMessage("Откройте камеру и отсканируйте приглашение") },
+                                enabled = services.capabilities.canScanQr,
+                            ) { Text("Сканировать") }
+                            OutlinedButton(onClick = { store.updateInviteInput("") }) { Text("Ввести вручную") }
+                        }
                         if (!services.capabilities.canScanQr) {
-                            Text("Если QR-сканер недоступен, приглашение можно вставить вручную.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("На этой платформе сканер недоступен, используйте ручной ввод.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     SectionCard(title = "Что дальше") {
@@ -370,6 +391,7 @@ fun NearbyScreen(
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
     val routes = remember(state.routes) { state.routes.associateBy { it.targetPeerId } }
+    val routeHealth = remember(state.routeHealth) { state.routeHealth.associateBy { it.targetPeerId } }
     PollingEffect(key = "nearby") { store.refresh() }
     LazyColumn(
         modifier = Modifier.screenBounds(),
@@ -383,17 +405,19 @@ fun NearbyScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { scope.launch { store.announcePresence() } }) { Text("Найти узлы") }
                             OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
+                            OutlinedButton(onClick = { scope.launch { store.forceTopologyRefresh() } }) { Text("Пересобрать сеть") }
                         }
                         Text("Сначала нажмите «Найти узлы», затем выберите устройство из списка ниже.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        state.message?.let { StatusBanner(it, ChipTone.SUCCESS) }
                         state.error?.let { StatusBanner(it, ChipTone.ERROR) }
                     }
                 },
                 second = {
-                    SectionCard(title = "Поиск по ID", subtitle = "Если знаете peerId, можно запросить маршрут напрямую") {
+                    SectionCard(title = "Поиск по ID", subtitle = "Если знаете ID узла, можно запросить маршрут напрямую") {
                         OutlinedTextField(
                             value = state.queryPeerId,
                             onValueChange = store::updateQueryPeerId,
-                            label = { Text("peerId") },
+                            label = { Text("ID узла") },
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -403,6 +427,56 @@ fun NearbyScreen(
                     }
                 },
             )
+        }
+        item {
+            SectionCard(title = "Топология") {
+                state.hostRole?.let { hostRole ->
+                    InfoRow("Роль узла", hostRole.localRole.asUiText())
+                    InfoRow("Текущий хост", hostRole.currentHostPeerId?.shortId(12) ?: "не выбран")
+                    InfoRow("Хост доступен", if (hostRole.hostReachable) "да" else "нет")
+                    InfoRow("Failover", if (hostRole.failoverInProgress) "в процессе" else "нет")
+                } ?: Text("Снимок сети ещё не получен.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                state.connectivityStrategy?.let { strategy ->
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    InfoRow("Стратегия", strategy.routeMode.asUiText())
+                    InfoRow("Режим сети", strategy.connectivityMode.asUiText())
+                    InfoRow("Relay", strategy.relayMode.asUiText())
+                }
+            }
+        }
+        item {
+            SectionCard(title = "Ручной узел", subtitle = "Используйте, если авто-поиск не нашёл устройство") {
+                OutlinedTextField(
+                    value = state.manualPeerId,
+                    onValueChange = store::updateManualPeerId,
+                    label = { Text("ID узла") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = state.manualHost,
+                        onValueChange = store::updateManualHost,
+                        label = { Text("Адрес") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = state.manualPort,
+                        onValueChange = store::updateManualPort,
+                        label = { Text("Порт") },
+                        modifier = Modifier.width(130.dp),
+                    )
+                }
+                OutlinedTextField(
+                    value = state.manualPath,
+                    onValueChange = store::updateManualPath,
+                    label = { Text("Путь") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { scope.launch { store.rememberPeerEndpoint() } }) { Text("Сохранить") }
+                    OutlinedButton(onClick = { scope.launch { store.forgetPeerEndpoint() } }) { Text("Удалить") }
+                }
+            }
         }
         item {
             SectionCard(title = "Список узлов") {
@@ -423,6 +497,12 @@ fun NearbyScreen(
                                     )
                                     BadgeChip(text = peer.source.asUiText(), tone = ChipTone.INFO)
                                     route?.let { BadgeChip(text = it.routeMode.asUiText(), tone = it.routeMode.asTone()) }
+                                    routeHealth[peer.peerId]?.let { health ->
+                                        BadgeChip(
+                                            text = "Состояние: ${health.state.asUiText()}",
+                                            tone = if (health.state == org.expert.link.mesh.contract.model.MeshRouteHealthState.HEALTHY) ChipTone.SUCCESS else ChipTone.WARNING,
+                                        )
+                                    }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     if (peer.peerId in state.trustedPeerIds) {
@@ -447,7 +527,7 @@ fun NearbyScreen(
             SectionCard(title = "Маршрут") {
                 val plan = state.routingPlan
                 if (plan == null) {
-                    Text("Выберите узел из списка или введите peerId, чтобы увидеть путь доставки.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Выберите узел из списка или введите ID, чтобы увидеть путь доставки.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     BadgeChip(plan.routeMode.asUiText(), plan.routeMode.asTone())
                     if (plan.hops.isEmpty()) {
@@ -591,11 +671,11 @@ fun ChatsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            SectionCard(title = "Новый чат", subtitle = "Откройте диалог по peerId или выберите контакт ниже") {
+            SectionCard(title = "Новый чат", subtitle = "Откройте диалог по ID узла или выберите контакт ниже") {
                 OutlinedTextField(
                     value = state.newPeerId,
                     onValueChange = store::updateNewPeerId,
-                    label = { Text("peerId контакта") },
+                    label = { Text("ID контакта") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -642,7 +722,7 @@ fun ChatsScreen(
                 OutlinedTextField(
                     value = state.newGroupMembersInput,
                     onValueChange = store::updateNewGroupMembersInput,
-                    label = { Text("Участники (peerId через запятую)") },
+                    label = { Text("Участники (ID через запятую)") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                 )
@@ -661,7 +741,7 @@ fun ChatsScreen(
         item {
             SectionCard(title = "Чаты") {
                 if (conversations.isEmpty()) {
-                    Text("Диалогов пока нет. Начните с контактов или откройте новый чат по peerId.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Диалогов пока нет. Начните с контактов или откройте новый чат по ID.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     conversations.forEachIndexed { index, conversation ->
                         val peerId = conversation.participantPeerIds.firstOrNull { it != state.localPeerId }.orEmpty()
@@ -886,7 +966,7 @@ fun GroupScreen(
                 OutlinedTextField(
                     value = state.participantDraft,
                     onValueChange = store::updateParticipantDraft,
-                    label = { Text("Добавить участника (peerId)") },
+                    label = { Text("Добавить участника (ID)") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1065,7 +1145,7 @@ fun TransfersScreen(
                 OutlinedTextField(
                     value = state.targetPeerId,
                     onValueChange = store::updateTargetPeerId,
-                    label = { Text("peerId получателя") },
+                    label = { Text("ID получателя") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -1180,13 +1260,13 @@ fun CallScreen(store: CallsStore) {
                 OutlinedTextField(
                     value = state.targetPeerId,
                     onValueChange = store::updateTargetPeerId,
-                    label = { Text("peerId контакта") },
+                    label = { Text("ID контакта") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = state.groupTargets,
                     onValueChange = store::updateGroupTargets,
-                    label = { Text("peerId участников (через запятую)") },
+                    label = { Text("ID участников (через запятую)") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -1198,6 +1278,7 @@ fun CallScreen(store: CallsStore) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { scope.launch { store.startCall() } }) { Text("Аудио 1:1") }
                     OutlinedButton(onClick = { scope.launch { store.startVideoCall() } }) { Text("Видео 1:1") }
+                    OutlinedButton(onClick = { scope.launch { store.startCallLegacy() } }) { Text("Базовый") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { scope.launch { store.startGroupAudioCall() } }) { Text("Группа аудио") }
@@ -1216,12 +1297,17 @@ fun CallScreen(store: CallsStore) {
                         CallRow(
                             call = call,
                             participants = state.participantsByCall[call.callId].orEmpty(),
+                            mediaState = state.mediaByCall[call.callId],
+                            mediaStats = state.mediaStatsByCall[call.callId],
                             lastEvent = state.eventsByCall[call.callId].orEmpty().lastOrNull()?.eventType?.name,
                             onAccept = { scope.launch { store.accept(call) } },
                             onReject = { scope.launch { store.reject(call) } },
                             onJoin = { scope.launch { store.join(call) } },
                             onLeave = { scope.launch { store.leave(call) } },
                             onQuality = { scope.launch { store.sendQuality(call) } },
+                            onToggleMicrophone = { scope.launch { store.toggleMicrophone(call) } },
+                            onToggleCamera = { scope.launch { store.toggleCamera(call) } },
+                            onSwitchCamera = { scope.launch { store.switchCamera(call) } },
                             onHangup = { scope.launch { store.hangup(call) } },
                         )
                     }
@@ -1237,12 +1323,17 @@ fun CallScreen(store: CallsStore) {
                         CallRow(
                             call = call,
                             participants = state.participantsByCall[call.callId].orEmpty(),
+                            mediaState = state.mediaByCall[call.callId],
+                            mediaStats = state.mediaStatsByCall[call.callId],
                             lastEvent = state.eventsByCall[call.callId].orEmpty().lastOrNull()?.eventType?.name,
                             onAccept = { scope.launch { store.accept(call) } },
                             onReject = { scope.launch { store.reject(call) } },
                             onJoin = { scope.launch { store.join(call) } },
                             onLeave = { scope.launch { store.leave(call) } },
                             onQuality = { scope.launch { store.sendQuality(call) } },
+                            onToggleMicrophone = { scope.launch { store.toggleMicrophone(call) } },
+                            onToggleCamera = { scope.launch { store.toggleCamera(call) } },
+                            onSwitchCamera = { scope.launch { store.switchCamera(call) } },
                             onHangup = { scope.launch { store.hangup(call) } },
                         )
                     }
@@ -1256,12 +1347,17 @@ fun CallScreen(store: CallsStore) {
 private fun CallRow(
     call: MeshCallSession,
     participants: List<org.expert.link.mesh.contract.model.MeshCallParticipant>,
+    mediaState: org.expert.link.mesh.contract.model.MeshCallMediaState?,
+    mediaStats: org.expert.link.mesh.contract.model.MeshMediaStats?,
     lastEvent: String?,
     onAccept: () -> Unit,
     onReject: () -> Unit,
     onJoin: () -> Unit,
     onLeave: () -> Unit,
     onQuality: () -> Unit,
+    onToggleMicrophone: () -> Unit,
+    onToggleCamera: () -> Unit,
+    onSwitchCamera: () -> Unit,
     onHangup: () -> Unit,
 ) {
     Card {
@@ -1280,6 +1376,16 @@ private fun CallRow(
                 InfoRow("RTT", "${it.rttMs} мс")
                 InfoRow("Потери", "${it.packetLossPercent}%")
             }
+            mediaState?.let {
+                InfoRow("Микрофон", if (it.localAudioEnabled) "Включён" else "Выключен")
+                InfoRow("Камера", if (it.localVideoEnabled) "Включена" else "Выключена")
+                InfoRow("Медиа", it.connectionState.name)
+            }
+            mediaStats?.let {
+                InfoRow("RTT медиа", "${it.rttMs} мс")
+                InfoRow("Входящий поток", "${it.inboundBitrateKbps} кбит/с")
+                InfoRow("Исходящий поток", "${it.outboundBitrateKbps} кбит/с")
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (call.status.name in setOf("RINGING", "INVITED", "NEW")) {
                     FilledTonalButton(onClick = onAccept) { Text("Принять") }
@@ -1290,6 +1396,9 @@ private fun CallRow(
                     OutlinedButton(onClick = onLeave) { Text("Выйти") }
                 }
                 OutlinedButton(onClick = onQuality) { Text("Проверить") }
+                OutlinedButton(onClick = onToggleMicrophone) { Text(if (mediaState?.localAudioEnabled == false) "Вкл. микрофон" else "Выкл. микрофон") }
+                OutlinedButton(onClick = onToggleCamera) { Text(if (mediaState?.localVideoEnabled == false) "Вкл. камеру" else "Выкл. камеру") }
+                OutlinedButton(onClick = onSwitchCamera) { Text("Сменить камеру") }
                 OutlinedButton(onClick = onHangup) { Text("Завершить") }
             }
         }
@@ -1314,7 +1423,10 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                         FilterChip(selected = section == item, onClick = { section = item }, label = { Text(item.title) })
                     }
                 }
-                OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
+                    OutlinedButton(onClick = { scope.launch { store.forceTopologyRefresh() } }) { Text("Пересобрать сеть") }
+                }
                 state.error?.let { StatusBanner(it, ChipTone.ERROR) }
             }
         }
@@ -1328,6 +1440,12 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                                 InfoRow("Маршруты", state.routes.size.toString())
                                 InfoRow("Узлы рядом", state.nearby.size.toString())
                                 state.relayStatus?.let { InfoRow("Relay", if (it.enabled) "Включён" else "Выключен") }
+                                state.relayMode?.let { InfoRow("Режим relay", it.asUiText()) }
+                                state.topology?.let {
+                                    InfoRow("Связность", it.connectivityMode.asUiText())
+                                    InfoRow("Роль", it.networkRoleState.localRole.asUiText())
+                                    InfoRow("Сбой сети", if (it.continuityDegraded) "Есть" else "Нет")
+                                }
                             }
                         },
                         second = {
@@ -1387,6 +1505,12 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                                             }
                                             BadgeChip(route.routeMode.asUiText(), route.routeMode.asTone())
                                         }
+                                        state.routeHealth.firstOrNull { it.targetPeerId == route.targetPeerId }?.let { health ->
+                                            Text(
+                                                "Состояние: ${health.state.asUiText()} (ошибок: ${health.failureCount})",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1403,9 +1527,58 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                                         }
                                     }
                                 }
+                                state.topology?.let { topology ->
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                    InfoRow("Хост", topology.networkRoleState.currentHostPeerId?.shortId(12) ?: "не выбран")
+                                    InfoRow("Failover", if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет")
+                                    InfoRow("Непрерывность", if (topology.continuityDegraded) "деградация" else "стабильно")
+                                }
                             }
                         },
                     )
+                }
+            }
+            DiagnosticsSection.SECURITY -> {
+                item {
+                    SectionCard(title = "Инциденты безопасности") {
+                        val incidents = state.events.filter { it.category == MeshEventCategory.SECURITY }
+                        if (incidents.isEmpty()) {
+                            Text("Инцидентов не зафиксировано.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            incidents.forEachIndexed { index, event ->
+                                EventRow(event)
+                                if (index < incidents.lastIndex) {
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            DiagnosticsSection.TOPOLOGY -> {
+                item {
+                    SectionCard(title = "Топология и роли") {
+                        val topology = state.topology
+                        if (topology == null) {
+                            Text("Снимок топологии недоступен.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            InfoRow("Роль узла", topology.networkRoleState.localRole.asUiText())
+                            InfoRow("Текущий хост", topology.networkRoleState.currentHostPeerId?.shortId(12) ?: "не выбран")
+                            InfoRow("Failover", if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет")
+                            InfoRow("Связность", topology.connectivityMode.asUiText())
+                            InfoRow("Relay режим", topology.relayMode.asUiText())
+                            InfoRow("Ожидают ACK", topology.pendingAckCount.toString())
+                            InfoRow("В очереди", topology.queuedPacketCount.toString())
+                            InfoRow("Передачи", topology.activeFileTransfers.toString())
+                            InfoRow("Звонки", topology.activeCallSessions.toString())
+                            if (topology.recentEvents.isNotEmpty()) {
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                                topology.recentEvents.take(8).forEach { event ->
+                                    InfoRow(event.eventType.name, event.message)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1458,14 +1631,14 @@ fun ProfileScreen(
                     SectionCard(title = "Профиль", subtitle = "Локальная учётная запись и адрес узла") {
                         state.profile?.let { profile ->
                             InfoRow("Имя", profile.displayName)
-                            Text("peerId")
+                            Text("ID узла")
                             MonospaceValue(profile.peerId)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (services.capabilities.canCopyText) {
                                     OutlinedButton(onClick = {
                                         scope.launch {
-                                            services.copyText("peerId", profile.peerId)
-                                                .onSuccess { onShowMessage("peerId скопирован") }
+                                            services.copyText("ID узла", profile.peerId)
+                                                .onSuccess { onShowMessage("ID узла скопирован") }
                                                 .onFailure { onShowMessage(it.message ?: "Не удалось скопировать") }
                                         }
                                     }) { Text("Копировать ID") }
@@ -1498,11 +1671,18 @@ fun ProfileScreen(
                                     }
                                 }) { Text("Поделиться") }
                             }
+                            OutlinedButton(
+                                onClick = { onShowMessage("Откройте сканер на втором устройстве") },
+                                enabled = services.capabilities.canScanQr,
+                            ) { Text("Сканировать") }
                         }
                         if (state.invite.isBlank()) {
                             Text("Создайте приглашение, чтобы поделиться им с другим устройством.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else {
                             MonospaceValue(state.invite)
+                            if (!services.capabilities.canScanQr) {
+                                Text("Если сканер недоступен, передайте строку вручную или через копирование.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         state.message?.let { StatusBanner(it, ChipTone.SUCCESS) }
                         state.error?.let { StatusBanner(it, ChipTone.ERROR) }

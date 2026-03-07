@@ -16,6 +16,8 @@ import org.expert.link.mesh.contract.config.MeshNodeConfig
 class AndroidPlatformServices(
     private val context: Context,
 ) : AppPlatformServices {
+    private val mediaEngine by lazy { AndroidWebRtcMediaEngineAdapter(context) }
+
     override val platformName: String = "Android"
     override val transportHint: String = "Безопасный режим"
     override val capabilities: PlatformCapabilities = PlatformCapabilities(
@@ -33,7 +35,7 @@ class AndroidPlatformServices(
         realDiscovery = false,
     )
 
-    override suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(config)
+    override suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(config, mediaEngine = mediaEngine)
 
     override suspend fun copyText(label: String, text: String): Result<Unit> = runCatching {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

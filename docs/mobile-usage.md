@@ -12,6 +12,11 @@
 val node = MeshBackend.launch(config)
 ```
 
+Запуск с platform media-engine:
+```kotlin
+val node = MeshBackend.launch(config, mediaEngine = platformMediaEngine)
+```
+
 Типы:
 - вход: `MeshNodeConfig`
 - результат: `MeshNode`
@@ -37,6 +42,16 @@ node.discoverPeer(peerId)
 val nearby = node.nearbyPeers()
 val routes = node.routes()
 val plan = node.routingPlan(peerId)
+```
+
+### Topology и сеть
+```kotlin
+val topology = node.observeTopologyState()
+val refreshed = node.forceTopologyRefresh()
+val hostRole = node.observeHostRole()
+val strategy = node.observeConnectivityStrategy(peerId)
+val routeHealth = node.inspectRouteHealth()
+val relayMode = node.relayModeState()
 ```
 
 ### Messaging
@@ -86,6 +101,11 @@ val active = node.observeActiveCall()
 val participants = node.observeCallParticipants(audio.callId)
 val callEvents = node.observeCallEvents(audio.callId)
 val sessions = node.callSessions()
+val media = node.observeMediaState(audio.callId)
+val stats = node.observeMediaStats(audio.callId)
+node.toggleMicrophone(MeshToggleMicrophoneCommand(audio.callId, enabled = false))
+node.toggleCamera(MeshToggleCameraCommand(audio.callId, enabled = false))
+node.switchCamera(audio.callId)
 ```
 
 ### Diagnostics
@@ -98,4 +118,5 @@ val relay = node.relayStatus()
 ## Host-модули
 - `simulator` показывает сценарии через тот же `MeshNode`.
 - `app-shared` использует тот же facade в presentation-слое.
-- `app-desktop` и `app-android` добавляют platform services для shared UI.
+- `app-android` подключает `AndroidWebRtcMediaEngineAdapter` (real WebRTC).
+- `app-desktop` подключает `DesktopWebRtcMediaEngineAdapter` (`isSupported=false`, signaling-only media boundary).

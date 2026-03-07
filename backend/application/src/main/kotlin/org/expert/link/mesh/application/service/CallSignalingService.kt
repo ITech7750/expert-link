@@ -445,14 +445,18 @@ class CallSignalingService(
         recipientPeerId: String,
         signalType: CallSignalType,
         payload: String,
+        muted: Boolean? = null,
+        videoEnabled: Boolean? = null,
     ): CallSignal {
         val signal = sendSignalInternal(
             callId = callId,
             recipientPeerId = recipientPeerId,
             signalType = signalType,
             payload = payload,
+            muted = muted,
+            videoEnabled = videoEnabled,
         )
-        transitionAndPersist(callId, signalType, signal.senderPeerId)
+        transitionAndPersist(callId, signalType, signal.senderPeerId, muted, videoEnabled)
         return signal
     }
 
@@ -613,12 +617,17 @@ class CallSignalingService(
     /** Возвращает входящие сессии. */
     suspend fun incomingSessions(): List<CallSession> = callSessionRepositoryPort.list().filter { it.status in INCOMING_STATES }
 
+    /** Возвращает call-сессию по id. */
+    suspend fun session(callId: String): CallSession? = callSessionRepositoryPort.findByCallId(callId)
+
     private suspend fun sendSignalInternal(
         callId: String,
         recipientPeerId: String,
         signalType: CallSignalType,
         payload: String,
         participantState: CallParticipantState? = null,
+        muted: Boolean? = null,
+        videoEnabled: Boolean? = null,
     ): CallSignal {
         val local = localProfileService.require()
         val trustedPeer = requireNotNull(peerTrustVerificationService.requireTrusted(recipientPeerId)) {
@@ -634,8 +643,8 @@ class CallSignalingService(
             callType = session?.callType,
             callScope = session?.callScope,
             participantState = participantState,
-            muted = null,
-            videoEnabled = null,
+            muted = muted,
+            videoEnabled = videoEnabled,
             correlationId = newId("signal"),
             payload = payload,
             createdAt = now(),
@@ -651,7 +660,13 @@ class CallSignalingService(
         return signal
     }
 
-    private suspend fun transitionAndPersist(callId: String, signalType: CallSignalType, actorPeerId: String) {
+    private suspend fun transitionAndPersist(
+        callId: String,
+        signalType: CallSignalType,
+        actorPeerId: String,
+        muted: Boolean? = null,
+        videoEnabled: Boolean? = null,
+    ) {
         val session = callSessionRepositoryPort.findByCallId(callId) ?: return
         val nextState = deriveState(signalType, session.status)
         val updated = session.copy(
@@ -662,8 +677,8 @@ class CallSignalingService(
                 participants = session.participants,
                 peerId = actorPeerId,
                 participantState = participantStateFromSignal(signalType),
-                muted = null,
-                videoEnabled = null,
+                muted = muted,
+                videoEnabled = videoEnabled,
             ),
             reconnectAttempts = if (nextState == CallState.RECONNECTING) session.reconnectAttempts + 1 else session.reconnectAttempts,
         )

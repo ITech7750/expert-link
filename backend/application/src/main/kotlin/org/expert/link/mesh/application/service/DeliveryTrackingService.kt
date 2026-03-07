@@ -28,6 +28,7 @@ class DeliveryTrackingService(
     private val retryPolicyService: RetryPolicyService,
     private val eventLogService: EventLogService,
     private val nodeMetricsService: NodeMetricsService,
+    private val topologyStateService: TopologyStateService? = null,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -78,6 +79,7 @@ class DeliveryTrackingService(
             if (!retryPolicyService.canRetry(record.attempt)) {
                 pendingAckRepositoryPort.remove(record.packetId)
                 routingService.invalidateRoute(record.targetPeerId)
+                topologyStateService?.onRouteInvalidated(record.targetPeerId, "retry-exhausted")
                 messageRepositoryPort.updateStatus(record.messageId, MessageDeliveryStatus.FAILED)
                 eventLogService.log(
                     category = EventCategory.MESSAGING,
@@ -137,9 +139,21 @@ class DeliveryTrackingService(
                 messageRepositoryPort.updateStatus(record.messageId, MessageDeliveryStatus.SENT)
             }
             nodeMetricsService.increment("packet.sent")
+            topologyStateService?.onDeliveryResult(
+                targetPeerId = record.targetPeerId,
+                routeMode = record.routeMode,
+                success = true,
+                viaRelayGateway = record.routeMode == RouteMode.RENDEZVOUS_RELAY,
+            )
             return
         }
         logger.warn { "Failed to send packet ${record.packetId}: ${result.errorMessage}" }
         nodeMetricsService.increment("packet.send_failed")
+        topologyStateService?.onDeliveryResult(
+            targetPeerId = record.targetPeerId,
+            routeMode = record.routeMode,
+            success = false,
+            viaRelayGateway = record.routeMode == RouteMode.RENDEZVOUS_RELAY,
+        )
     }
 }

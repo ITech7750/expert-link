@@ -128,6 +128,13 @@
 - `observeIncomingCalls`
 - `observeCallParticipants`
 - `observeCallEvents`
+- `observeMediaState`
+- `observeMediaStats`
+
+### Управление media
+- `toggleMicrophone`
+- `toggleCamera`
+- `switchCamera`
 
 ### Состояния звонка
 `CallState`:
@@ -174,6 +181,10 @@
 - `CallParticipant`
 - `CallInvitation`
 - `CallEvent`
+- `CallMediaState`
+- `CallMediaStats`
+- `SessionDescription`
+- `IceCandidate`
 
 ### Storage ports
 - `CallSessionRepositoryPort`
@@ -189,3 +200,86 @@
 
 ### Совместимость API
 Legacy-методы `startCall`, `sendCallSignal`, `hangupCall` сохранены как совместимый слой поверх call v2.
+
+## WebRTC media integration
+
+### Domain media ports
+- `MediaEnginePort`
+- `WebRtcSessionPort`
+- `AudioCapturePort`
+- `VideoCapturePort`
+- `MediaRendererPort`
+
+### Contract media API
+- `MeshMediaEngine`
+- `MeshWebRtcSession`
+- модели: `MeshCallMediaState`, `MeshMediaStats`, `MeshSessionDescription`, `MeshIceCandidate`, `MeshWebRtcSignalEvent`
+
+### Runtime поведение
+1. `CallMediaService` связывает signaling (`CallSignalingService`) и media backend.
+2. В исходящем звонке backend создаёт invite и затем отправляет `SDP_OFFER`.
+3. Входящие `SDP_ANSWER` и `ICE_CANDIDATE` применяются к `WebRtcSessionPort`.
+4. `toggleMicrophone`/`toggleCamera` меняют local media state и рассылают `MUTE_CHANGED`/`VIDEO_CHANGED`.
+
+### Platform поддержка
+- Android: `AndroidWebRtcMediaEngineAdapter` реализует реальный WebRTC (`PeerConnection`, SDP/ICE, аудио/видео tracks, stats).
+- Desktop: `DesktopWebRtcMediaEngineAdapter` оставлен boundary-адаптером (`isSupported=false`).
+
+## Topology и host/failover
+
+### Topology модели
+- `NetworkTopologyState`
+- `NetworkRoleState`
+- `HostRole`
+- `HostCandidate`
+- `RouteHealth`
+- `RouteHealthState`
+- `ConnectivityMode`
+- `ConnectivityStrategy`
+- `RelayMode`
+- `TopologyEvent`
+
+### Contract модели
+- `MeshTopologyState`
+- `MeshNetworkRoleState`
+- `MeshHostRole`
+- `MeshHostCandidate`
+- `MeshRouteHealth`
+- `MeshRouteHealthState`
+- `MeshConnectivityStrategy`
+- `MeshConnectivityMode`
+- `MeshRelayMode`
+- `MeshTopologyEvent`
+
+### Contract API
+`MeshNode`:
+- `observeTopologyState`
+- `observeHostRole`
+- `observeConnectivityStrategy(peerId)`
+- `inspectRouteHealth`
+- `relayModeState`
+- `forceTopologyRefresh`
+
+### Поведение failover
+1. Потеря хоста (`onPeerLost`) помечает host candidate как unreachable.
+2. Маршрут к потерянному узлу инвалидируется.
+3. `TopologyStateService` перевыбирает хост и выставляет `failoverInProgress`.
+4. После стабилизации маршрутов состояние переключается на новый `currentHostPeerId`.
+5. При восстановлении continuity формируется `CONTINUITY_RECOVERED`.
+
+### Поведение relay/proxy fallback
+1. `ConnectivityStrategyService` выбирает стратегию доставки.
+2. При наличии rendezvous+relay выбирается `RENDEZVOUS_RELAY`.
+3. Успешная relay-доставка переводит `RelayMode` в `ACTIVE_FALLBACK`.
+4. Snapshot topology отражает активную relay-стратегию и route health.
+
+### Continuity tracking
+`TopologyStateService` учитывает:
+- pending ACK;
+- outgoing queue;
+- активные file transfer;
+- активные call sessions;
+- failed routes;
+- host failover.
+
+Если есть деградация, `continuityDegraded=true` и создаётся событие `CONTINUITY_DEGRADED`.

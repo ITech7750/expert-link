@@ -2,11 +2,14 @@ package org.expert.link.mesh.bootstrap.runtime
 
 import org.expert.link.mesh.application.service.BlockListService
 import org.expert.link.mesh.application.service.CallSignalingService
+import org.expert.link.mesh.application.service.CallMediaService
 import org.expert.link.mesh.application.service.ChatMessagingService
 import org.expert.link.mesh.application.service.FileTransferService
 import org.expert.link.mesh.application.service.GroupChatService
+import org.expert.link.mesh.application.service.ConnectivityStrategyService
 import org.expert.link.mesh.application.service.RoutingService
 import org.expert.link.mesh.application.service.ThreadService
+import org.expert.link.mesh.application.service.TopologyStateService
 import org.expert.link.mesh.domain.port.repository.ChatMemberRepositoryPort
 import org.expert.link.mesh.domain.port.repository.BlockListRepositoryPort
 import org.expert.link.mesh.domain.port.repository.CallEventRepositoryPort
@@ -51,5 +54,8 @@ data class MeshNodeComponents(
     val threadService: ThreadService,
     val fileTransferService: FileTransferService,
     val callSignalingService: CallSignalingService,
+    val callMediaService: CallMediaService,
     val routingService: RoutingService,
+    val topologyStateService: TopologyStateService,
+    val connectivityStrategyService: ConnectivityStrategyService,
 )

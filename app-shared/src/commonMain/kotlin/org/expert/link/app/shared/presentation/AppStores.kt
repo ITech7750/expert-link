@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.datetime.Clock
 import org.expert.link.app.shared.navigation.AppNavigator
 import org.expert.link.app.shared.platform.AppPlatformServices
 import org.expert.link.mesh.contract.api.MeshCallSignalCommand
@@ -24,9 +25,12 @@ import org.expert.link.mesh.contract.api.MeshSendMessageCommand
 import org.expert.link.mesh.contract.api.MeshSendThreadMessageCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
 import org.expert.link.mesh.contract.api.MeshStartGroupCallCommand
+import org.expert.link.mesh.contract.api.MeshToggleCameraCommand
+import org.expert.link.mesh.contract.api.MeshToggleMicrophoneCommand
 import org.expert.link.mesh.contract.config.MeshNodeConfig
 import org.expert.link.mesh.contract.model.MeshBlockedPeer
 import org.expert.link.mesh.contract.model.MeshCallEvent
+import org.expert.link.mesh.contract.model.MeshCallMediaState
 import org.expert.link.mesh.contract.model.MeshCallParticipant
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignalType
@@ -39,17 +43,23 @@ import org.expert.link.mesh.contract.model.MeshGroupChat
 import org.expert.link.mesh.contract.model.MeshGroupEvent
 import org.expert.link.mesh.contract.model.MeshLocalProfile
 import org.expert.link.mesh.contract.model.MeshMetricSnapshot
+import org.expert.link.mesh.contract.model.MeshMediaStats
 import org.expert.link.mesh.contract.model.MeshMessageReceipt
 import org.expert.link.mesh.contract.model.MeshNearbyPeer
 import org.expert.link.mesh.contract.model.MeshPairingSession
 import org.expert.link.mesh.contract.model.MeshPairedPeer
 import org.expert.link.mesh.contract.model.MeshPeerEndpoint
+import org.expert.link.mesh.contract.model.MeshConnectivityStrategy
+import org.expert.link.mesh.contract.model.MeshNetworkRoleState
 import org.expert.link.mesh.contract.model.MeshRelayStatus
+import org.expert.link.mesh.contract.model.MeshRelayMode
 import org.expert.link.mesh.contract.model.MeshRouteInfo
+import org.expert.link.mesh.contract.model.MeshRouteHealth
 import org.expert.link.mesh.contract.model.MeshRoutingPlan
 import org.expert.link.mesh.contract.model.MeshThread
 import org.expert.link.mesh.contract.model.MeshThreadMessage
 import org.expert.link.mesh.contract.model.MeshThreadSummary
+import org.expert.link.mesh.contract.model.MeshTopologyState
 import org.expert.link.mesh.contract.model.MeshTrustState
 
 /** Статус runtime узла в UI. */
@@ -163,6 +173,8 @@ data class HomeState(
     val conversationsCount: Int = 0,
     val transfersCount: Int = 0,
     val callsCount: Int = 0,
+    val topology: MeshTopologyState? = null,
+    val relayMode: MeshRelayMode? = null,
 )
 
 class HomeStore(private val session: NodeSessionController) {
@@ -175,6 +187,8 @@ class HomeStore(private val session: NodeSessionController) {
             HomeState(
                 metrics = node.metrics(),
                 relayStatus = node.relayStatus(),
+                relayMode = node.relayModeState(),
+                topology = node.observeTopologyState(),
                 nearbyCount = node.nearbyPeers().size,
                 pairingCount = node.pairingSessions().size,
                 peersCount = node.peers().size,
@@ -265,9 +279,17 @@ class PairingStore(private val session: NodeSessionController) {
 data class NearbyState(
     val loading: Boolean = false,
     val error: String? = null,
+    val message: String? = null,
     val queryPeerId: String = "",
+    val manualPeerId: String = "",
+    val manualHost: String = "",
+    val manualPort: String = "",
+    val manualPath: String = "/api/v1/packets",
     val nearby: List<MeshNearbyPeer> = emptyList(),
     val routes: List<MeshRouteInfo> = emptyList(),
+    val routeHealth: List<MeshRouteHealth> = emptyList(),
+    val hostRole: MeshNetworkRoleState? = null,
+    val connectivityStrategy: MeshConnectivityStrategy? = null,
     val routingPlan: MeshRoutingPlan? = null,
     val trustedPeerIds: Set<String> = emptySet(),
     val trustedPeerNames: Map<String, String> = emptyMap(),
@@ -281,6 +303,22 @@ class NearbyStore(private val session: NodeSessionController) {
         _state.update { it.copy(queryPeerId = value) }
     }
 
+    fun updateManualPeerId(value: String) {
+        _state.update { it.copy(manualPeerId = value) }
+    }
+
+    fun updateManualHost(value: String) {
+        _state.update { it.copy(manualHost = value) }
+    }
+
+    fun updateManualPort(value: String) {
+        _state.update { it.copy(manualPort = value) }
+    }
+
+    fun updateManualPath(value: String) {
+        _state.update { it.copy(manualPath = value) }
+    }
+
     fun selectPeer(peerId: String) {
         _state.update { it.copy(queryPeerId = peerId) }
     }
@@ -289,9 +327,17 @@ class NearbyStore(private val session: NodeSessionController) {
         val result = session.withNode { node ->
             val peers = node.peers()
             NearbyState(
+                message = state.value.message,
                 queryPeerId = state.value.queryPeerId,
+                manualPeerId = state.value.manualPeerId,
+                manualHost = state.value.manualHost,
+                manualPort = state.value.manualPort,
+                manualPath = state.value.manualPath,
                 nearby = node.nearbyPeers(),
                 routes = node.routes(),
+                routeHealth = node.inspectRouteHealth(),
+                hostRole = node.observeHostRole(),
+                connectivityStrategy = selectedPeerId?.takeIf { it.isNotBlank() }?.let { node.observeConnectivityStrategy(it) },
                 routingPlan = selectedPeerId?.takeIf { it.isNotBlank() }?.let { node.routingPlan(it) },
                 trustedPeerIds = peers.map { it.identity.peerId }.toSet(),
                 trustedPeerNames = peers.associate { it.identity.peerId to it.identity.displayName },
@@ -305,13 +351,70 @@ class NearbyStore(private val session: NodeSessionController) {
         refresh()
     }
 
+    suspend fun forceTopologyRefresh() {
+        val result = session.withNode { it.forceTopologyRefresh() }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> it.copy(message = "Сеть пересобрана", error = null) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось пересобрать сеть", message = null) },
+            )
+        }
+        refresh()
+    }
+
     suspend fun discoverPeer() {
         val peerId = state.value.queryPeerId.trim()
         if (peerId.isEmpty()) {
-            _state.update { it.copy(error = "Введите peerId") }
+            _state.update { it.copy(error = "Введите ID узла") }
             return
         }
         session.withNode { it.discoverPeer(peerId) }
+        refresh(peerId)
+    }
+
+    suspend fun rememberPeerEndpoint() {
+        val current = state.value
+        val peerId = current.manualPeerId.trim()
+        val host = current.manualHost.trim()
+        val port = current.manualPort.trim().toIntOrNull()
+        if (peerId.isBlank() || host.isBlank() || port == null) {
+            _state.update { it.copy(error = "Укажите ID узла, адрес и порт") }
+            return
+        }
+        val result = session.withNode { node ->
+            node.rememberPeerEndpoint(
+                peerId = peerId,
+                endpoint = MeshPeerEndpoint(
+                    scheme = "http",
+                    host = host,
+                    port = port,
+                    path = current.manualPath.trim().ifBlank { "/api/v1/packets" },
+                    announcedAt = Clock.System.now(),
+                ),
+            )
+        }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> it.copy(message = "Узел добавлен вручную", error = null, queryPeerId = peerId) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось добавить узел", message = null) },
+            )
+        }
+        refresh(peerId)
+    }
+
+    suspend fun forgetPeerEndpoint() {
+        val peerId = state.value.manualPeerId.trim()
+        if (peerId.isBlank()) {
+            _state.update { it.copy(error = "Введите ID узла для удаления") }
+            return
+        }
+        val result = session.withNode { it.forgetPeerEndpoint(peerId) }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> it.copy(message = "Узел удалён из кэша", error = null, queryPeerId = peerId) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось удалить узел", message = null) },
+            )
+        }
         refresh(peerId)
     }
 }
@@ -405,9 +508,13 @@ class ChatsStore(private val session: NodeSessionController) {
 
     suspend fun openConversation(peerId: String = state.value.newPeerId.trim()): Result<MeshConversation> {
         if (peerId.isBlank()) {
-            return Result.failure(IllegalArgumentException("Введите peerId"))
+            return Result.failure(IllegalArgumentException("Введите ID узла"))
         }
-        val result = session.withNode { it.openConversation(peerId) }
+        val result = session.withNode { node ->
+            val created = runCatching { node.createDirectChat(peerId) }
+                .getOrElse { node.openConversation(peerId) }
+            runCatching { node.openConversation(peerId) }.getOrElse { created }
+        }
         refresh()
         return result
     }
@@ -487,8 +594,18 @@ class ChatStore(private val session: NodeSessionController) {
             _state.update { it.copy(error = "Введите сообщение") }
             return
         }
-        val result = session.withNode {
-            it.sendMessage(MeshSendMessageCommand(chatId = current.conversationId, body = body))
+        val result = session.withNode { node ->
+            if (current.peerId.isNotBlank()) {
+                node.sendChat(
+                    org.expert.link.mesh.contract.api.MeshChatCommand(
+                        targetPeerId = current.peerId,
+                        body = body,
+                        conversationId = current.conversationId,
+                    ),
+                )
+            } else {
+                node.sendMessage(MeshSendMessageCommand(chatId = current.conversationId, body = body))
+            }
         }
         _state.update {
             result.fold(
@@ -570,7 +687,7 @@ class GroupStore(private val session: NodeSessionController) {
     suspend fun addParticipant() {
         val peerId = state.value.participantDraft.trim()
         if (peerId.isBlank()) {
-            _state.update { it.copy(error = "Введите peerId участника") }
+            _state.update { it.copy(error = "Введите ID участника") }
             return
         }
         session.withNode {
@@ -613,13 +730,37 @@ class ThreadStore(private val session: NodeSessionController) {
         val current = state.value
         if (current.chatId.isBlank() || current.rootMessageId.isBlank()) return
         val result = session.withNode { node ->
+            val thread = node.thread(current.chatId, current.rootMessageId)
+            val summary = node.threadSummary(current.chatId, current.rootMessageId)
+            val detailedMessages = node.threadMessagesDetailed(current.chatId, current.rootMessageId)
+            val fallbackMessages = node.threadMessages(current.chatId, current.rootMessageId)
             ThreadState(
                 chatId = current.chatId,
                 rootMessageId = current.rootMessageId,
                 draft = current.draft,
-                thread = node.thread(current.chatId, current.rootMessageId),
-                summary = node.threadSummary(current.chatId, current.rootMessageId),
-                messages = node.threadMessagesDetailed(current.chatId, current.rootMessageId),
+                thread = thread,
+                summary = summary,
+                messages = if (detailedMessages.isNotEmpty()) {
+                    detailedMessages
+                } else {
+                    val resolvedThreadId = thread?.threadId ?: summary?.threadId ?: "thread-${current.rootMessageId}"
+                    fallbackMessages.map {
+                        MeshThreadMessage(
+                            threadId = resolvedThreadId,
+                            messageId = it.messageId,
+                            chatId = it.conversationId,
+                            rootMessageId = current.rootMessageId,
+                            senderPeerId = it.senderPeerId,
+                            body = it.body,
+                            parentMessageId = it.parentMessageId,
+                            replyToMessageId = it.replyToMessageId,
+                            createdAt = it.createdAt,
+                            deliveryStatus = it.deliveryStatus,
+                            deliveredAt = it.deliveredAt,
+                            failedAt = it.failedAt,
+                        )
+                    }
+                },
             )
         }
         _state.value = result.getOrElse { current.copy(error = it.message ?: "Не удалось загрузить тред") }
@@ -636,13 +777,24 @@ class ThreadStore(private val session: NodeSessionController) {
             if (node.thread(current.chatId, current.rootMessageId) == null) {
                 node.createThread(MeshCreateThreadCommand(current.chatId, current.rootMessageId))
             }
-            node.sendThreadReply(
-                MeshSendThreadMessageCommand(
-                    chatId = current.chatId,
-                    rootMessageId = current.rootMessageId,
-                    body = body,
-                ),
-            )
+            runCatching {
+                node.sendThreadReply(
+                    MeshSendThreadMessageCommand(
+                        chatId = current.chatId,
+                        rootMessageId = current.rootMessageId,
+                        body = body,
+                    ),
+                )
+            }.getOrElse {
+                node.sendThreadMessage(
+                    MeshSendThreadMessageCommand(
+                        chatId = current.chatId,
+                        rootMessageId = current.rootMessageId,
+                        body = body,
+                    ),
+                )
+                null
+            }
         }
         _state.update { it.copy(draft = "") }
         refresh()
@@ -688,7 +840,7 @@ class TransfersStore(private val session: NodeSessionController) {
     suspend fun send() {
         val current = state.value
         if (current.targetPeerId.isBlank() || current.path.isBlank()) {
-            _state.update { it.copy(error = "Укажите peerId и путь") }
+            _state.update { it.copy(error = "Укажите ID получателя и путь") }
             return
         }
         val result = session.withNode {
@@ -734,6 +886,8 @@ data class CallsState(
     val incomingCalls: List<MeshCallSession> = emptyList(),
     val participantsByCall: Map<String, List<MeshCallParticipant>> = emptyMap(),
     val eventsByCall: Map<String, List<MeshCallEvent>> = emptyMap(),
+    val mediaByCall: Map<String, MeshCallMediaState> = emptyMap(),
+    val mediaStatsByCall: Map<String, MeshMediaStats> = emptyMap(),
 )
 
 class CallsStore(private val session: NodeSessionController) {
@@ -762,12 +916,20 @@ class CallsStore(private val session: NodeSessionController) {
             val eventsByCall = sessions.associate { session ->
                 session.callId to node.observeCallEvents(session.callId, 16)
             }
+            val mediaByCall = sessions.mapNotNull { session ->
+                node.observeMediaState(session.callId)?.let { media -> session.callId to media }
+            }.toMap()
+            val mediaStatsByCall = sessions.mapNotNull { session ->
+                node.observeMediaStats(session.callId)?.let { stats -> session.callId to stats }
+            }.toMap()
             current.copy(
                 sessions = sessions,
                 activeCalls = active,
                 incomingCalls = incoming,
                 participantsByCall = participantsByCall,
                 eventsByCall = eventsByCall,
+                mediaByCall = mediaByCall,
+                mediaStatsByCall = mediaStatsByCall,
                 error = null,
             )
         }
@@ -777,7 +939,7 @@ class CallsStore(private val session: NodeSessionController) {
     suspend fun startCall() {
         val current = state.value
         if (current.targetPeerId.isBlank()) {
-            _state.update { it.copy(error = "Введите peerId") }
+            _state.update { it.copy(error = "Введите ID контакта") }
             return
         }
         val result = session.withNode {
@@ -795,7 +957,7 @@ class CallsStore(private val session: NodeSessionController) {
     suspend fun startVideoCall() {
         val current = state.value
         if (current.targetPeerId.isBlank()) {
-            _state.update { it.copy(error = "Введите peerId") }
+            _state.update { it.copy(error = "Введите ID контакта") }
             return
         }
         val result = session.withNode {
@@ -810,11 +972,30 @@ class CallsStore(private val session: NodeSessionController) {
         refresh()
     }
 
+    @Suppress("DEPRECATION")
+    suspend fun startCallLegacy() {
+        val current = state.value
+        if (current.targetPeerId.isBlank()) {
+            _state.update { it.copy(error = "Введите ID контакта") }
+            return
+        }
+        val result = session.withNode {
+            it.startCall(MeshStartCallCommand(targetPeerId = current.targetPeerId.trim(), offer = current.offer))
+        }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> current.copy(message = "Базовый вызов отправлен", error = null) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось начать базовый вызов") },
+            )
+        }
+        refresh()
+    }
+
     suspend fun startGroupAudioCall() {
         val current = state.value
         val targets = current.groupTargets.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         if (targets.isEmpty()) {
-            _state.update { it.copy(error = "Введите peerId участников через запятую") }
+            _state.update { it.copy(error = "Введите ID участников через запятую") }
             return
         }
         val result = session.withNode {
@@ -840,7 +1021,7 @@ class CallsStore(private val session: NodeSessionController) {
         val current = state.value
         val targets = current.groupTargets.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         if (targets.isEmpty()) {
-            _state.update { it.copy(error = "Введите peerId участников через запятую") }
+            _state.update { it.copy(error = "Введите ID участников через запятую") }
             return
         }
         val result = session.withNode {
@@ -868,7 +1049,7 @@ class CallsStore(private val session: NodeSessionController) {
                 MeshAcceptCallCommand(
                     callId = call.callId,
                     recipientPeerId = replyPeer(call, it.profile.peerId),
-                    answer = state.value.signalPayload,
+                    answer = state.value.signalPayload.takeIf { payload -> payload.isNotBlank() },
                 ),
             )
         }
@@ -894,7 +1075,7 @@ class CallsStore(private val session: NodeSessionController) {
                 MeshJoinCallCommand(
                     callId = call.callId,
                     recipientPeerId = replyPeer(call, it.profile.peerId),
-                    answer = state.value.signalPayload,
+                    answer = state.value.signalPayload.takeIf { payload -> payload.isNotBlank() },
                 ),
             )
         }
@@ -932,8 +1113,52 @@ class CallsStore(private val session: NodeSessionController) {
 
     suspend fun hangup(call: MeshCallSession) {
         session.withNode {
-            it.endCall(MeshEndCallCommand(callId = call.callId, reason = "Завершено"))
+            runCatching {
+                it.endCall(MeshEndCallCommand(callId = call.callId, reason = "Завершено"))
+            }.getOrElse { _ ->
+                @Suppress("DEPRECATION")
+                it.hangupCall(
+                    MeshHangupCallCommand(
+                        callId = call.callId,
+                        recipientPeerId = replyPeer(call, it.profile.peerId),
+                        reason = "Завершено",
+                    ),
+                )
+            }
         }
+        refresh()
+    }
+
+    suspend fun toggleMicrophone(call: MeshCallSession) {
+        val current = state.value.mediaByCall[call.callId]
+        val next = !(current?.localAudioEnabled ?: true)
+        session.withNode {
+            it.toggleMicrophone(
+                MeshToggleMicrophoneCommand(
+                    callId = call.callId,
+                    enabled = next,
+                ),
+            )
+        }
+        refresh()
+    }
+
+    suspend fun toggleCamera(call: MeshCallSession) {
+        val current = state.value.mediaByCall[call.callId]
+        val next = !(current?.localVideoEnabled ?: true)
+        session.withNode {
+            it.toggleCamera(
+                MeshToggleCameraCommand(
+                    callId = call.callId,
+                    enabled = next,
+                ),
+            )
+        }
+        refresh()
+    }
+
+    suspend fun switchCamera(call: MeshCallSession) {
+        session.withNode { it.switchCamera(call.callId) }
         refresh()
     }
 
@@ -961,8 +1186,11 @@ data class DiagnosticsState(
     val events: List<MeshEventLogEntry> = emptyList(),
     val metrics: MeshMetricSnapshot? = null,
     val routes: List<MeshRouteInfo> = emptyList(),
+    val routeHealth: List<MeshRouteHealth> = emptyList(),
     val nearby: List<MeshNearbyPeer> = emptyList(),
     val relayStatus: MeshRelayStatus? = null,
+    val relayMode: MeshRelayMode? = null,
+    val topology: MeshTopologyState? = null,
 )
 
 class DiagnosticsStore(private val session: NodeSessionController) {
@@ -975,11 +1203,25 @@ class DiagnosticsStore(private val session: NodeSessionController) {
                 events = node.recentEvents(24),
                 metrics = node.metrics(),
                 routes = node.routes(),
+                routeHealth = node.inspectRouteHealth(),
                 nearby = node.nearbyPeers(),
                 relayStatus = node.relayStatus(),
+                relayMode = node.relayModeState(),
+                topology = node.observeTopologyState(),
             )
         }
         _state.value = result.getOrElse { state.value.copy(error = it.message ?: "Не удалось загрузить диагностику") }
+    }
+
+    suspend fun forceTopologyRefresh() {
+        val result = session.withNode { node -> node.forceTopologyRefresh() }
+        _state.update {
+            result.fold(
+                onSuccess = { _ -> it.copy(error = null) },
+                onFailure = { error -> it.copy(error = error.message ?: "Не удалось обновить топологию") },
+            )
+        }
+        refresh()
     }
 }
 
