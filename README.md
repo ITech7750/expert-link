@@ -308,6 +308,8 @@ sequenceDiagram
 ![7.jpg](7.jpg)
 ![8.jpg](8.jpg)
 ![9.jpg](9.jpg)
+![10.jpg](10.jpg)
+![11.jpg](11.jpg)
 ## Ограничения текущей реализации
 - Все репозитории в runtime — in‑memory; состояние теряется при перезапуске.
 - `RendezvousRelayClient` — in‑memory stub, внешнего relay‑сервера нет.
