@@ -108,7 +108,8 @@ sequenceDiagram
   Caller->>Callee: CALL_SIGNAL (SDP_OFFER/ICE)
   MediaB->>Callee: SDP_ANSWER/ICE
   Callee->>Caller: CALL_SIGNAL (SDP_ANSWER/ICE)
-  MediaA<->MediaB: WebRTC media (DTLS‑SRTP)
+  MediaA->>MediaB: WebRTC media (DTLS-SRTP)
+  MediaB->>MediaA: WebRTC media (DTLS-SRTP)
 ```
 
 ### Поток передачи файла
