@@ -5,18 +5,26 @@ import org.expert.link.mesh.bootstrap.MeshNodeBootstrap
 import org.expert.link.mesh.bootstrap.runtime.MeshNodeComponents
 import org.expert.link.mesh.contract.api.MeshCallSignalCommand
 import org.expert.link.mesh.contract.api.MeshChatCommand
+import org.expert.link.mesh.contract.api.MeshChatMemberCommand
+import org.expert.link.mesh.contract.api.MeshCreateGroupChatCommand
+import org.expert.link.mesh.contract.api.MeshCreateThreadCommand
 import org.expert.link.mesh.contract.api.MeshFileTransferCommand
 import org.expert.link.mesh.contract.api.MeshHangupCallCommand
 import org.expert.link.mesh.contract.api.MeshNode
+import org.expert.link.mesh.contract.api.MeshSendMessageCommand
+import org.expert.link.mesh.contract.api.MeshSendThreadMessageCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
 import org.expert.link.mesh.contract.config.MeshNodeConfig
 import org.expert.link.mesh.contract.model.MeshBlockedPeer
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignal
 import org.expert.link.mesh.contract.model.MeshChatMessage
+import org.expert.link.mesh.contract.model.MeshChatSummary
 import org.expert.link.mesh.contract.model.MeshConversation
 import org.expert.link.mesh.contract.model.MeshEventLogEntry
 import org.expert.link.mesh.contract.model.MeshFileTransferSession
+import org.expert.link.mesh.contract.model.MeshGroupChat
+import org.expert.link.mesh.contract.model.MeshGroupEvent
 import org.expert.link.mesh.contract.model.MeshMetricSnapshot
 import org.expert.link.mesh.contract.model.MeshMessageReceipt
 import org.expert.link.mesh.contract.model.MeshNearbyPeer
@@ -27,7 +35,11 @@ import org.expert.link.mesh.contract.model.MeshLocalProfile
 import org.expert.link.mesh.contract.model.MeshRelayStatus
 import org.expert.link.mesh.contract.model.MeshRouteInfo
 import org.expert.link.mesh.contract.model.MeshRoutingPlan
+import org.expert.link.mesh.contract.model.MeshThread
+import org.expert.link.mesh.contract.model.MeshThreadMessage
+import org.expert.link.mesh.contract.model.MeshThreadSummary
 import org.expert.link.mesh.domain.model.security.BlockedPeer
+import org.expert.link.mesh.domain.model.identity.PeerIdentity
 import org.expert.link.mesh.backend.internal.toContract
 import org.expert.link.mesh.backend.internal.toDomain
 import org.expert.link.mesh.backend.internal.toRuntime
@@ -137,8 +149,57 @@ private class DefaultMeshNode(
         return components.chatMessagingService.openConversation(peerId).toContract()
     }
 
+    override suspend fun createDirectChat(peerId: String): MeshConversation {
+        return components.chatMessagingService.openConversation(peerId).toContract()
+    }
+
+    override suspend fun createGroupChat(command: MeshCreateGroupChatCommand): MeshConversation {
+        val group = components.groupChatService
+            .createGroupChat(command.title, command.description, command.participantPeerIds)
+        return requireNotNull(components.conversationRepositoryPort.findByConversationId(group.chatId)).toContract()
+    }
+
+    override suspend fun renameChat(chatId: String, title: String): MeshConversation? {
+        components.groupChatService.renameGroupChat(chatId, title) ?: return null
+        return components.conversationRepositoryPort.findByConversationId(chatId)?.toContract()
+    }
+
+    override suspend fun addParticipants(chatId: String, participants: List<MeshChatMemberCommand>): MeshConversation? {
+        val peerIdentities = participants.map { participant ->
+            val peer = components.peerRepositoryPort.findByPeerId(participant.peerId)
+            peer?.peerIdentity ?: PeerIdentity(
+                peerId = participant.peerId,
+                displayName = participant.displayName,
+                publicKey = "",
+            )
+        }
+        components.groupChatService.addParticipants(chatId, peerIdentities) ?: return null
+        return components.conversationRepositoryPort.findByConversationId(chatId)?.toContract()
+    }
+
+    override suspend fun removeParticipant(chatId: String, peerId: String): MeshConversation? {
+        components.groupChatService.removeParticipant(chatId, peerId) ?: return null
+        return components.conversationRepositoryPort.findByConversationId(chatId)?.toContract()
+    }
+
+    override suspend fun groupChats(): List<MeshGroupChat> {
+        return components.groupChatService.listGroupChats().map { it.toContract() }
+    }
+
+    override suspend fun groupEvents(chatId: String, limit: Int): List<MeshGroupEvent> {
+        return components.groupChatService.groupEvents(chatId, limit).map { it.toContract() }
+    }
+
+    override suspend fun chatSummaries(): List<MeshChatSummary> {
+        return components.groupChatService.chatSummaries().map { it.toContract() }
+    }
+
     override suspend fun conversations(): List<MeshConversation> {
         return components.conversationRepositoryPort.list().map { it.toContract() }
+    }
+
+    override suspend fun groupMessages(chatId: String): List<MeshChatMessage> {
+        return components.groupChatService.groupMessages(chatId).map { it.toContract() }
     }
 
     override suspend fun messages(conversationId: String): List<MeshChatMessage> {
@@ -151,6 +212,52 @@ private class DefaultMeshNode(
 
     override suspend fun sendChat(command: MeshChatCommand): MeshChatMessage {
         return components.runtime.lifecycleService.sendChat(command.targetPeerId, command.body, command.conversationId).toContract()
+    }
+
+    override suspend fun sendMessage(command: MeshSendMessageCommand): MeshChatMessage {
+        return components.runtime.lifecycleService.sendMessage(command.chatId, command.body).toContract()
+    }
+
+    override suspend fun createThread(command: MeshCreateThreadCommand): MeshThread {
+        return components.threadService.createThread(command.chatId, command.rootMessageId).toContract()
+    }
+
+    override suspend fun thread(chatId: String, rootMessageId: String): MeshThread? {
+        return components.threadService.thread(chatId, rootMessageId)?.toContract()
+    }
+
+    override suspend fun threadUpdates(chatId: String): List<MeshThreadSummary> {
+        return components.threadService.threadSummaries(chatId).map { it.toContract() }
+    }
+
+    override suspend fun threadMessagesDetailed(chatId: String, rootMessageId: String): List<MeshThreadMessage> {
+        return components.threadService.threadMessages(chatId, rootMessageId).map { it.toContract() }
+    }
+
+    override suspend fun sendThreadReply(command: MeshSendThreadMessageCommand): MeshThreadMessage {
+        return components.threadService.sendThreadMessage(
+            chatId = command.chatId,
+            rootMessageId = command.rootMessageId,
+            body = command.body,
+            parentMessageId = command.parentMessageId,
+        ).toContract()
+    }
+
+    override suspend fun threadMessages(chatId: String, rootMessageId: String): List<MeshChatMessage> {
+        return components.chatMessagingService.threadMessages(chatId, rootMessageId).map { it.toContract() }
+    }
+
+    override suspend fun sendThreadMessage(command: MeshSendThreadMessageCommand): MeshChatMessage {
+        return components.runtime.lifecycleService.sendThreadMessage(
+            conversationId = command.chatId,
+            rootMessageId = command.rootMessageId,
+            body = command.body,
+            parentMessageId = command.parentMessageId,
+        ).toContract()
+    }
+
+    override suspend fun threadSummary(chatId: String, rootMessageId: String): MeshThreadSummary? {
+        return components.chatMessagingService.threadSummary(chatId, rootMessageId)?.toContract()
     }
 
     override suspend fun fileTransfers(): List<MeshFileTransferSession> {

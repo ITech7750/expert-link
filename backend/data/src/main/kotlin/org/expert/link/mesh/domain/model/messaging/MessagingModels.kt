@@ -3,6 +3,39 @@ package org.expert.link.mesh.domain.model.messaging
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
 
+/** Тип чата. */
+@Serializable
+enum class ChatType {
+    DIRECT,
+    GROUP,
+}
+
+/** Роль участника чата. */
+@Serializable
+enum class ChatMemberRole {
+    OWNER,
+    ADMIN,
+    MEMBER,
+}
+
+/** Участник чата. */
+@Serializable
+data class ChatMember(
+    val peerId: String,
+    val displayName: String,
+    val role: ChatMemberRole,
+    val joinedAt: Instant,
+)
+
+/** Тип сообщения. */
+@Serializable
+enum class MessageType {
+    TEXT,
+    SYSTEM,
+    FILE,
+    CALL_EVENT,
+}
+
 /** Статус доставки локального сообщения. */
 @Serializable
 enum class MessageDeliveryStatus {
@@ -18,10 +51,18 @@ enum class MessageDeliveryStatus {
 @Serializable
 data class Conversation(
     val conversationId: String,
+    val chatType: ChatType,
+    val title: String,
+    val description: String? = null,
+    val createdByPeerId: String,
     val participantPeerIds: Set<String>,
+    val members: List<ChatMember> = emptyList(),
     val createdAt: Instant,
     val updatedAt: Instant,
     val lastMessageId: String? = null,
+    val unreadCount: Int = 0,
+    val pinned: Boolean = false,
+    val archived: Boolean = false,
 )
 
 /** Неизменяемое чат-сообщение. */
@@ -32,6 +73,11 @@ data class ChatMessage(
     val senderPeerId: String,
     val recipientPeerId: String,
     val body: String,
+    val messageType: MessageType = MessageType.TEXT,
+    val threadRootMessageId: String? = null,
+    val parentMessageId: String? = null,
+    val replyToMessageId: String? = null,
+    val threadReplyCount: Int = 0,
     val deliveryStatus: MessageDeliveryStatus,
     val createdAt: Instant,
     val deliveredAt: Instant? = null,
@@ -55,4 +101,15 @@ data class MessageReceipt(
     val conversationId: String,
     val receivedAt: Instant,
     val deliveryStatus: MessageDeliveryStatus,
+)
+
+/** Сводка треда внутри чата. */
+@Serializable
+data class ThreadSummary(
+    val threadId: String,
+    val chatId: String,
+    val rootMessageId: String,
+    val replyCount: Int,
+    val lastReplyAt: Instant? = null,
+    val participantPeerIds: Set<String> = emptySet(),
 )

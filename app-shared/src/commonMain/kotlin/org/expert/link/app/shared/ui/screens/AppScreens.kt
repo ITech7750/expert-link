@@ -48,6 +48,7 @@ import org.expert.link.app.shared.presentation.ChatStore
 import org.expert.link.app.shared.presentation.ChatsStore
 import org.expert.link.app.shared.presentation.ContactsStore
 import org.expert.link.app.shared.presentation.DiagnosticsStore
+import org.expert.link.app.shared.presentation.GroupStore
 import org.expert.link.app.shared.presentation.HomeStore
 import org.expert.link.app.shared.presentation.NodeRuntimeStatus
 import org.expert.link.app.shared.presentation.NodeSessionState
@@ -55,6 +56,7 @@ import org.expert.link.app.shared.presentation.NearbyStore
 import org.expert.link.app.shared.presentation.PairingStore
 import org.expert.link.app.shared.presentation.ProfileStore
 import org.expert.link.app.shared.presentation.SettingsStore
+import org.expert.link.app.shared.presentation.ThreadStore
 import org.expert.link.app.shared.presentation.TransfersStore
 import org.expert.link.app.shared.ui.components.BadgeChip
 import org.expert.link.app.shared.ui.components.ChipTone
@@ -575,6 +577,7 @@ private fun ContactRow(
 fun ChatsScreen(
     store: ChatsStore,
     onOpenConversation: (conversationId: String, peerId: String) -> Unit,
+    onOpenGroup: (chatId: String) -> Unit,
     onOpenContacts: () -> Unit,
 ) {
     val state by store.state.collectAsState()
@@ -623,26 +626,74 @@ fun ChatsScreen(
             }
         }
         item {
-            SectionCard(title = "Диалоги") {
+            SectionCard(title = "Новая группа", subtitle = "Создайте групповой чат и добавьте участников") {
+                OutlinedTextField(
+                    value = state.newGroupTitle,
+                    onValueChange = store::updateNewGroupTitle,
+                    label = { Text("Название группы") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = state.newGroupDescription,
+                    onValueChange = store::updateNewGroupDescription,
+                    label = { Text("Описание (необязательно)") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = state.newGroupMembersInput,
+                    onValueChange = store::updateNewGroupMembersInput,
+                    label = { Text("Участники (peerId через запятую)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        scope.launch {
+                            store.createGroupChat().onSuccess { conversation ->
+                                onOpenGroup(conversation.conversationId)
+                            }
+                        }
+                    }) { Text("Создать группу") }
+                    OutlinedButton(onClick = onOpenContacts) { Text("Контакты") }
+                }
+            }
+        }
+        item {
+            SectionCard(title = "Чаты") {
                 if (conversations.isEmpty()) {
                     Text("Диалогов пока нет. Начните с контактов или откройте новый чат по peerId.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     conversations.forEachIndexed { index, conversation ->
                         val peerId = conversation.participantPeerIds.firstOrNull { it != state.localPeerId }.orEmpty()
                         val peer = peerMap[peerId]
+                        val isGroup = conversation.chatType.name == "GROUP"
+                        val title = if (isGroup) conversation.title else (peer?.identity?.displayName ?: peerId.shortId(12))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(peer?.identity?.displayName ?: peerId.shortId(12), fontWeight = FontWeight.SemiBold)
+                                Text(title, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     text = "Обновлён ${conversation.updatedAt.asUiTime()}",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    BadgeChip(
+                                        text = if (isGroup) "Группа" else "Личный",
+                                        tone = if (isGroup) ChipTone.INFO else ChipTone.SUCCESS,
+                                    )
+                                    if (conversation.unreadCount > 0) {
+                                        BadgeChip("Новых: ${conversation.unreadCount}", ChipTone.WARNING)
+                                    }
+                                }
                             }
-                            FilledTonalButton(onClick = { onOpenConversation(conversation.conversationId, peerId) }) { Text("Открыть") }
+                            if (isGroup) {
+                                FilledTonalButton(onClick = { onOpenGroup(conversation.conversationId) }) { Text("Группа") }
+                            } else {
+                                FilledTonalButton(onClick = { onOpenConversation(conversation.conversationId, peerId) }) { Text("Открыть") }
+                            }
                         }
                         if (index < conversations.lastIndex) {
                             HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
@@ -660,6 +711,7 @@ fun ChatScreen(
     localPeerId: String?,
     onStartCall: (String) -> Unit,
     onSendFile: (String, String) -> Unit,
+    onOpenThread: (rootMessageId: String) -> Unit,
 ) {
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -672,27 +724,52 @@ fun ChatScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         SectionCard(title = "Диалог", subtitle = "Сообщения и быстрые действия по контакту") {
-            Text(state.peerId.shortId(14), fontWeight = FontWeight.SemiBold)
-            state.route?.let { route ->
+            Text(
+                text = if (state.peerId.isNotBlank()) state.peerId.shortId(14) else "Групповой чат",
+                fontWeight = FontWeight.SemiBold,
+            )
+            val route = state.route
+            if (route != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BadgeChip(route.routeMode.asUiText(), route.routeMode.asTone())
                     BadgeChip("Hop: ${route.hops.size}", ChipTone.INFO)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { onSendFile(state.peerId, state.conversationId) }) { Text("Файл") }
-                    OutlinedButton(onClick = { onStartCall(state.peerId) }) { Text("Звонок") }
-                    OutlinedButton(onClick = { showRouteDetails = !showRouteDetails }) { Text(if (showRouteDetails) "Скрыть маршрут" else "Маршрут") }
+                if (state.peerId.isNotBlank()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { onSendFile(state.peerId, state.conversationId) }) { Text("Файл") }
+                        OutlinedButton(onClick = { onStartCall(state.peerId) }) { Text("Звонок") }
+                        OutlinedButton(onClick = { showRouteDetails = !showRouteDetails }) { Text(if (showRouteDetails) "Скрыть маршрут" else "Маршрут") }
+                    }
                 }
                 if (showRouteDetails) {
                     route.hops.forEach { hop ->
                         InfoRow(hop.peerId.shortId(10), "${hop.endpoint.host}:${hop.endpoint.port}")
                     }
                 }
-            } ?: Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = { onSendFile(state.peerId, state.conversationId) }) { Text("Файл") }
-                OutlinedButton(onClick = { onStartCall(state.peerId) }) { Text("Звонок") }
+            } else if (state.peerId.isNotBlank()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { onSendFile(state.peerId, state.conversationId) }) { Text("Файл") }
+                    OutlinedButton(onClick = { onStartCall(state.peerId) }) { Text("Звонок") }
+                }
             }
             state.error?.let { StatusBanner(it, ChipTone.ERROR) }
+        }
+        if (state.threadSummaries.isNotEmpty()) {
+            SectionCard(title = "Треды") {
+                state.threadSummaries.forEach { thread ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Сообщение ${thread.rootMessageId.shortId(8)}", fontWeight = FontWeight.SemiBold)
+                            Text("Ответов: ${thread.replyCount}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(onClick = { onOpenThread(thread.rootMessageId) }) { Text("Открыть") }
+                    }
+                }
+            }
         }
         Card(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
@@ -721,6 +798,12 @@ fun ChatScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(onClick = { onOpenThread(message.messageId) }) { Text("Тред") }
+                                        if (message.threadReplyCount > 0) {
+                                            BadgeChip("Ответов: ${message.threadReplyCount}", ChipTone.INFO)
+                                        }
+                                    }
                                 }
                             }
                             if (message.deliveryStatus.name == "FAILED") {
@@ -748,6 +831,188 @@ fun ChatScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun GroupScreen(
+    store: GroupStore,
+    onOpenChat: (chatId: String) -> Unit,
+    onOpenThread: (chatId: String, rootMessageId: String) -> Unit,
+) {
+    val state by store.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    PollingEffect(key = state.chatId, enabled = state.chatId.isNotBlank()) { store.refresh() }
+    LazyColumn(
+        modifier = Modifier.screenBounds(),
+        contentPadding = PaddingValues(vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item {
+            SectionCard(title = "Группа", subtitle = "Участники, события и быстрые действия") {
+                val group = state.group
+                if (group == null) {
+                    Text("Группа недоступна", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text(group.title, fontWeight = FontWeight.SemiBold)
+                    group.description?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BadgeChip("Участников: ${group.members.size}", ChipTone.INFO)
+                        if (group.archived) BadgeChip("Архив", ChipTone.WARNING)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onOpenChat(group.chatId) }) { Text("Открыть чат") }
+                        OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
+                    }
+                }
+                state.error?.let { StatusBanner(it, ChipTone.ERROR) }
+            }
+        }
+        item {
+            SectionCard(title = "Управление группой") {
+                OutlinedTextField(
+                    value = state.titleDraft,
+                    onValueChange = store::updateTitleDraft,
+                    label = { Text("Новое название") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { scope.launch { store.rename() } }) { Text("Переименовать") }
+                }
+                OutlinedTextField(
+                    value = state.participantDraft,
+                    onValueChange = store::updateParticipantDraft,
+                    label = { Text("Добавить участника (peerId)") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { scope.launch { store.addParticipant() } }) { Text("Добавить") }
+                }
+            }
+        }
+        item {
+            SectionCard(title = "Участники") {
+                val group = state.group
+                if (group == null || group.members.isEmpty()) {
+                    Text("Список участников пуст.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    group.members.forEach { member ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(member.displayName.ifBlank { member.peerId.shortId(10) }, fontWeight = FontWeight.SemiBold)
+                                Text(member.role.name, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (member.role.name != "OWNER") {
+                                OutlinedButton(onClick = { scope.launch { store.removeParticipant(member.peerId) } }) { Text("Удалить") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            SectionCard(title = "Системные события") {
+                if (state.events.isEmpty()) {
+                    Text("Событий пока нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    state.events.forEach { event ->
+                        InfoRow(event.eventType.name, "${event.text} • ${event.createdAt.asUiTime()}")
+                    }
+                }
+            }
+        }
+        item {
+            SectionCard(title = "Последние сообщения") {
+                if (state.messages.isEmpty()) {
+                    Text("Сообщений пока нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    val messages = if (state.messages.size <= 12) {
+                        state.messages
+                    } else {
+                        state.messages.subList(state.messages.size - 12, state.messages.size)
+                    }
+                    messages.forEach { message ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(message.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(message.createdAt.asUiTime(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            OutlinedButton(onClick = { onOpenThread(state.chatId, message.messageId) }) { Text("Тред") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ThreadScreen(store: ThreadStore) {
+    val state by store.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    PollingEffect(key = "${state.chatId}:${state.rootMessageId}", enabled = state.chatId.isNotBlank()) { store.refresh() }
+    Column(
+        modifier = Modifier
+            .screenBounds()
+            .padding(vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        SectionCard(title = "Тред", subtitle = "Вложенное обсуждение сообщения") {
+            Text("Чат: ${state.chatId.shortId(12)}")
+            Text("Root: ${state.rootMessageId.shortId(12)}")
+            state.summary?.let {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BadgeChip("Ответов: ${it.replyCount}", ChipTone.INFO)
+                    it.lastReplyAt?.let { time -> BadgeChip(time.asUiTime(), ChipTone.INFO) }
+                }
+            }
+            state.error?.let { StatusBanner(it, ChipTone.ERROR) }
+        }
+        Card(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (state.messages.isEmpty()) {
+                    item { Text("Пока нет ответов в этом треде.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                } else {
+                    items(state.messages) { message ->
+                        Card {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(message.body)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    BadgeChip(message.deliveryStatus.asUiText(), message.deliveryStatus.asTone())
+                                    Text(message.createdAt.asUiTime(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        SectionCard(title = "Ответ в тред") {
+            OutlinedTextField(
+                value = state.draft,
+                onValueChange = store::updateDraft,
+                label = { Text("Введите ответ") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { scope.launch { store.sendReply() } }) { Text("Отправить") }
+                OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
             }
         }
     }

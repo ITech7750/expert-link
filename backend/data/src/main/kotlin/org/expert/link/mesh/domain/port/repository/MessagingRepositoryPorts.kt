@@ -4,6 +4,7 @@ import kotlinx.datetime.Instant
 import org.expert.link.mesh.domain.model.messaging.ChatMessage
 import org.expert.link.mesh.domain.model.messaging.Conversation
 import org.expert.link.mesh.domain.model.messaging.MessageDeliveryStatus
+import org.expert.link.mesh.domain.model.messaging.ThreadSummary
 import org.expert.link.mesh.domain.model.network.PendingAckRecord
 
 /** Порт постоянного хранения диалогов. */
@@ -32,8 +33,17 @@ interface MessageRepositoryPort {
     /** Возвращает сообщения диалога. */
     suspend fun listByConversation(conversationId: String): List<ChatMessage>
 
+    /** Возвращает сообщения треда. */
+    suspend fun listByThread(conversationId: String, rootMessageId: String): List<ChatMessage>
+
+    /** Возвращает сводку треда для root-сообщения. */
+    suspend fun getThreadSummary(conversationId: String, rootMessageId: String): ThreadSummary?
+
     /** Обновляет статус доставки сообщения. */
     suspend fun updateStatus(messageId: String, status: MessageDeliveryStatus): ChatMessage?
+
+    /** Обновляет число ответов в треде для root-сообщения. */
+    suspend fun updateThreadReplyCount(messageId: String, replyCount: Int): ChatMessage?
 }
 
 /** Порт runtime-очереди исходящих сообщений. */

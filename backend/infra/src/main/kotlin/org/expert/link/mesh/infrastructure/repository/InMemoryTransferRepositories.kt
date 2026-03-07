@@ -72,6 +72,7 @@ class InMemoryEventLogRepositoryAdapter : EventLogRepositoryPort {
     }
 
     override suspend fun listRecent(limit: Int): List<EventLogEntry> = mutex.withLock {
-        entries.toList().takeLast(limit)
+        val items = entries.toList()
+        if (limit >= items.size) items else items.subList(items.size - limit, items.size)
     }
 }

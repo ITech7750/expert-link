@@ -332,6 +332,21 @@ class NodeLifecycleService(
     )
 
     /**
+     * Sends a message to a chat by conversation id.
+     */
+    suspend fun sendMessage(conversationId: String, body: String) = chatMessagingService.sendToConversation(conversationId, body)
+
+    /**
+     * Sends a message into a thread.
+     */
+    suspend fun sendThreadMessage(
+        conversationId: String,
+        rootMessageId: String,
+        body: String,
+        parentMessageId: String? = null,
+    ) = chatMessagingService.sendThreadMessage(conversationId, rootMessageId, body, parentMessageId)
+
+    /**
      * Starts an active discovery lookup for a specific peer when discovery is enabled.
      */
     suspend fun discoverPeer(peerId: String) {

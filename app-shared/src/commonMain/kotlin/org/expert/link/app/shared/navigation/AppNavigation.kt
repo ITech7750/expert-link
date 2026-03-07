@@ -14,6 +14,8 @@ sealed interface AppRoute {
     data object Contacts : AppRoute
     data object Chats : AppRoute
     data class Dialog(val conversationId: String, val peerId: String) : AppRoute
+    data class Group(val chatId: String) : AppRoute
+    data class Thread(val chatId: String, val rootMessageId: String) : AppRoute
     data object Transfers : AppRoute
     data object Call : AppRoute
     data object Diagnostics : AppRoute
@@ -67,6 +69,8 @@ fun AppRoute.title(): String = when (this) {
     AppRoute.Contacts -> "Контакты"
     AppRoute.Chats -> "Чаты"
     is AppRoute.Dialog -> "Диалог"
+    is AppRoute.Group -> "Группа"
+    is AppRoute.Thread -> "Тред"
     AppRoute.Transfers -> "Передачи"
     AppRoute.Call -> "Звонок"
     AppRoute.Diagnostics -> "Диагностика"
@@ -76,7 +80,7 @@ fun AppRoute.title(): String = when (this) {
 
 fun AppRoute.primaryDestination(): PrimaryDestination? = when (this) {
     AppRoute.Home, AppRoute.Nearby, AppRoute.Pairing, AppRoute.Contacts, AppRoute.Diagnostics, AppRoute.Settings -> PrimaryDestination.HOME
-    AppRoute.Chats, is AppRoute.Dialog -> PrimaryDestination.CHATS
+    AppRoute.Chats, is AppRoute.Dialog, is AppRoute.Group, is AppRoute.Thread -> PrimaryDestination.CHATS
     AppRoute.Transfers, AppRoute.Call -> PrimaryDestination.TRANSFERS
     AppRoute.Profile -> PrimaryDestination.PROFILE
     AppRoute.Loading -> null

@@ -9,19 +9,26 @@ import kotlinx.coroutines.flow.update
 import org.expert.link.app.shared.navigation.AppNavigator
 import org.expert.link.app.shared.platform.AppPlatformServices
 import org.expert.link.mesh.contract.api.MeshCallSignalCommand
-import org.expert.link.mesh.contract.api.MeshChatCommand
+import org.expert.link.mesh.contract.api.MeshChatMemberCommand
+import org.expert.link.mesh.contract.api.MeshCreateGroupChatCommand
+import org.expert.link.mesh.contract.api.MeshCreateThreadCommand
 import org.expert.link.mesh.contract.api.MeshFileTransferCommand
 import org.expert.link.mesh.contract.api.MeshHangupCallCommand
 import org.expert.link.mesh.contract.api.MeshNode
+import org.expert.link.mesh.contract.api.MeshSendMessageCommand
+import org.expert.link.mesh.contract.api.MeshSendThreadMessageCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
 import org.expert.link.mesh.contract.config.MeshNodeConfig
 import org.expert.link.mesh.contract.model.MeshBlockedPeer
 import org.expert.link.mesh.contract.model.MeshCallSession
 import org.expert.link.mesh.contract.model.MeshCallSignalType
 import org.expert.link.mesh.contract.model.MeshChatMessage
+import org.expert.link.mesh.contract.model.MeshChatSummary
 import org.expert.link.mesh.contract.model.MeshConversation
 import org.expert.link.mesh.contract.model.MeshEventLogEntry
 import org.expert.link.mesh.contract.model.MeshFileTransferSession
+import org.expert.link.mesh.contract.model.MeshGroupChat
+import org.expert.link.mesh.contract.model.MeshGroupEvent
 import org.expert.link.mesh.contract.model.MeshLocalProfile
 import org.expert.link.mesh.contract.model.MeshMetricSnapshot
 import org.expert.link.mesh.contract.model.MeshMessageReceipt
@@ -32,6 +39,9 @@ import org.expert.link.mesh.contract.model.MeshPeerEndpoint
 import org.expert.link.mesh.contract.model.MeshRelayStatus
 import org.expert.link.mesh.contract.model.MeshRouteInfo
 import org.expert.link.mesh.contract.model.MeshRoutingPlan
+import org.expert.link.mesh.contract.model.MeshThread
+import org.expert.link.mesh.contract.model.MeshThreadMessage
+import org.expert.link.mesh.contract.model.MeshThreadSummary
 import org.expert.link.mesh.contract.model.MeshTrustState
 
 /** Статус runtime узла в UI. */
@@ -334,9 +344,14 @@ data class ChatsState(
     val loading: Boolean = false,
     val error: String? = null,
     val newPeerId: String = "",
+    val newGroupTitle: String = "",
+    val newGroupDescription: String = "",
+    val newGroupMembersInput: String = "",
     val localPeerId: String? = null,
     val peers: List<MeshPairedPeer> = emptyList(),
     val conversations: List<MeshConversation> = emptyList(),
+    val groupChats: List<MeshGroupChat> = emptyList(),
+    val chatSummaries: List<MeshChatSummary> = emptyList(),
 )
 
 class ChatsStore(private val session: NodeSessionController) {
@@ -351,13 +366,30 @@ class ChatsStore(private val session: NodeSessionController) {
         _state.update { it.copy(newPeerId = peerId) }
     }
 
+    fun updateNewGroupTitle(value: String) {
+        _state.update { it.copy(newGroupTitle = value) }
+    }
+
+    fun updateNewGroupDescription(value: String) {
+        _state.update { it.copy(newGroupDescription = value) }
+    }
+
+    fun updateNewGroupMembersInput(value: String) {
+        _state.update { it.copy(newGroupMembersInput = value) }
+    }
+
     suspend fun refresh() {
         val result = session.withNode { node ->
             ChatsState(
                 newPeerId = state.value.newPeerId,
+                newGroupTitle = state.value.newGroupTitle,
+                newGroupDescription = state.value.newGroupDescription,
+                newGroupMembersInput = state.value.newGroupMembersInput,
                 localPeerId = node.profile.peerId,
                 peers = node.peers(),
                 conversations = node.conversations(),
+                groupChats = node.groupChats(),
+                chatSummaries = node.chatSummaries(),
             )
         }
         _state.value = result.getOrElse { state.value.copy(error = it.message ?: "Не удалось загрузить чаты") }
@@ -371,6 +403,32 @@ class ChatsStore(private val session: NodeSessionController) {
         refresh()
         return result
     }
+
+    suspend fun createGroupChat(): Result<MeshConversation> {
+        val title = state.value.newGroupTitle.trim()
+        if (title.isBlank()) {
+            return Result.failure(IllegalArgumentException("Введите название группы"))
+        }
+        val participantIds = state.value.newGroupMembersInput
+            .split(',', ';', '\n', ' ')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+        val result = session.withNode { node ->
+            node.createGroupChat(
+                MeshCreateGroupChatCommand(
+                    title = title,
+                    description = state.value.newGroupDescription.trim().ifBlank { null },
+                    participantPeerIds = participantIds,
+                ),
+            )
+        }
+        if (result.isSuccess) {
+            _state.update { it.copy(newGroupTitle = "", newGroupDescription = "", newGroupMembersInput = "") }
+        }
+        refresh()
+        return result
+    }
 }
 
 data class ChatState(
@@ -380,6 +438,7 @@ data class ChatState(
     val peerId: String = "",
     val draft: String = "",
     val messages: List<MeshChatMessage> = emptyList(),
+    val threadSummaries: List<MeshThreadSummary> = emptyList(),
     val receipts: List<MeshMessageReceipt> = emptyList(),
     val route: MeshRoutingPlan? = null,
 )
@@ -405,6 +464,7 @@ class ChatStore(private val session: NodeSessionController) {
                 peerId = current.peerId,
                 draft = current.draft,
                 messages = node.messages(current.conversationId),
+                threadSummaries = node.threadUpdates(current.conversationId),
                 receipts = node.messageReceipts(50).filter { it.conversationId == current.conversationId },
                 route = current.peerId.takeIf { it.isNotBlank() }?.let { node.routingPlan(it) },
             )
@@ -420,7 +480,7 @@ class ChatStore(private val session: NodeSessionController) {
             return
         }
         val result = session.withNode {
-            it.sendChat(MeshChatCommand(targetPeerId = current.peerId, body = body, conversationId = current.conversationId))
+            it.sendMessage(MeshSendMessageCommand(chatId = current.conversationId, body = body))
         }
         _state.update {
             result.fold(
@@ -434,6 +494,150 @@ class ChatStore(private val session: NodeSessionController) {
     suspend fun resend(message: MeshChatMessage) {
         _state.update { it.copy(draft = message.body) }
         send()
+    }
+
+    suspend fun createThread(rootMessageId: String): Result<MeshThread> {
+        return session.withNode { node ->
+            node.createThread(MeshCreateThreadCommand(chatId = state.value.conversationId, rootMessageId = rootMessageId))
+        }
+    }
+}
+
+data class GroupState(
+    val loading: Boolean = false,
+    val error: String? = null,
+    val chatId: String = "",
+    val titleDraft: String = "",
+    val participantDraft: String = "",
+    val group: MeshGroupChat? = null,
+    val events: List<MeshGroupEvent> = emptyList(),
+    val messages: List<MeshChatMessage> = emptyList(),
+)
+
+class GroupStore(private val session: NodeSessionController) {
+    private val _state = MutableStateFlow(GroupState())
+    val state: StateFlow<GroupState> = _state.asStateFlow()
+
+    fun bind(chatId: String) {
+        _state.update { it.copy(chatId = chatId) }
+    }
+
+    fun updateTitleDraft(value: String) {
+        _state.update { it.copy(titleDraft = value) }
+    }
+
+    fun updateParticipantDraft(value: String) {
+        _state.update { it.copy(participantDraft = value) }
+    }
+
+    suspend fun refresh() {
+        val chatId = state.value.chatId
+        if (chatId.isBlank()) return
+        val result = session.withNode { node ->
+            val group = node.groupChats().firstOrNull { it.chatId == chatId }
+            GroupState(
+                chatId = chatId,
+                titleDraft = state.value.titleDraft,
+                participantDraft = state.value.participantDraft,
+                group = group,
+                events = node.groupEvents(chatId, 50),
+                messages = node.groupMessages(chatId),
+            )
+        }
+        _state.value = result.getOrElse { state.value.copy(error = it.message ?: "Не удалось загрузить группу") }
+    }
+
+    suspend fun rename() {
+        val title = state.value.titleDraft.trim()
+        if (title.isBlank()) {
+            _state.update { it.copy(error = "Введите новое название") }
+            return
+        }
+        val chatId = state.value.chatId
+        session.withNode { it.renameChat(chatId, title) }
+        _state.update { it.copy(titleDraft = "") }
+        refresh()
+    }
+
+    suspend fun addParticipant() {
+        val peerId = state.value.participantDraft.trim()
+        if (peerId.isBlank()) {
+            _state.update { it.copy(error = "Введите peerId участника") }
+            return
+        }
+        session.withNode {
+            it.addParticipants(state.value.chatId, listOf(MeshChatMemberCommand(peerId, peerId)))
+        }
+        _state.update { it.copy(participantDraft = "") }
+        refresh()
+    }
+
+    suspend fun removeParticipant(peerId: String) {
+        session.withNode { it.removeParticipant(state.value.chatId, peerId) }
+        refresh()
+    }
+}
+
+data class ThreadState(
+    val loading: Boolean = false,
+    val error: String? = null,
+    val chatId: String = "",
+    val rootMessageId: String = "",
+    val draft: String = "",
+    val thread: MeshThread? = null,
+    val summary: MeshThreadSummary? = null,
+    val messages: List<MeshThreadMessage> = emptyList(),
+)
+
+class ThreadStore(private val session: NodeSessionController) {
+    private val _state = MutableStateFlow(ThreadState())
+    val state: StateFlow<ThreadState> = _state.asStateFlow()
+
+    fun bind(chatId: String, rootMessageId: String) {
+        _state.update { it.copy(chatId = chatId, rootMessageId = rootMessageId) }
+    }
+
+    fun updateDraft(value: String) {
+        _state.update { it.copy(draft = value) }
+    }
+
+    suspend fun refresh() {
+        val current = state.value
+        if (current.chatId.isBlank() || current.rootMessageId.isBlank()) return
+        val result = session.withNode { node ->
+            ThreadState(
+                chatId = current.chatId,
+                rootMessageId = current.rootMessageId,
+                draft = current.draft,
+                thread = node.thread(current.chatId, current.rootMessageId),
+                summary = node.threadSummary(current.chatId, current.rootMessageId),
+                messages = node.threadMessagesDetailed(current.chatId, current.rootMessageId),
+            )
+        }
+        _state.value = result.getOrElse { current.copy(error = it.message ?: "Не удалось загрузить тред") }
+    }
+
+    suspend fun sendReply() {
+        val current = state.value
+        val body = current.draft.trim()
+        if (body.isBlank()) {
+            _state.update { it.copy(error = "Введите сообщение") }
+            return
+        }
+        session.withNode { node ->
+            if (node.thread(current.chatId, current.rootMessageId) == null) {
+                node.createThread(MeshCreateThreadCommand(current.chatId, current.rootMessageId))
+            }
+            node.sendThreadReply(
+                MeshSendThreadMessageCommand(
+                    chatId = current.chatId,
+                    rootMessageId = current.rootMessageId,
+                    body = body,
+                ),
+            )
+        }
+        _state.update { it.copy(draft = "") }
+        refresh()
     }
 }
 
@@ -723,6 +927,8 @@ class ExpertLinkAppStore(
     val contacts = ContactsStore(session)
     val chats = ChatsStore(session)
     val chat = ChatStore(session)
+    val group = GroupStore(session)
+    val thread = ThreadStore(session)
     val transfers = TransfersStore(session)
     val calls = CallsStore(session)
     val diagnostics = DiagnosticsStore(session)

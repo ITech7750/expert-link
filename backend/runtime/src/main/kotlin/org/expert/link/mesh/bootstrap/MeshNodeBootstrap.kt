@@ -21,6 +21,7 @@ import org.expert.link.mesh.application.service.DiscoveryOrchestrationService
 import org.expert.link.mesh.application.service.EventLogService
 import org.expert.link.mesh.application.service.FileResumeService
 import org.expert.link.mesh.application.service.FileTransferService
+import org.expert.link.mesh.application.service.GroupChatService
 import org.expert.link.mesh.application.service.LocalProfileService
 import org.expert.link.mesh.application.service.MessageEncryptionService
 import org.expert.link.mesh.application.service.NodeMetricsService
@@ -34,6 +35,7 @@ import org.expert.link.mesh.application.service.RetryPolicyService
 import org.expert.link.mesh.application.service.RetrySchedulerService
 import org.expert.link.mesh.application.service.RoutingService
 import org.expert.link.mesh.application.service.SecurityIncidentService
+import org.expert.link.mesh.application.service.ThreadService
 import org.expert.link.mesh.bootstrap.config.NodeConfiguration
 import org.expert.link.mesh.controller.PacketController
 import org.expert.link.mesh.controller.PacketRouteController
@@ -59,12 +61,17 @@ import org.expert.link.mesh.infrastructure.repository.InMemoryCallSessionReposit
 import org.expert.link.mesh.infrastructure.repository.InMemoryConversationRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryEventLogRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryFileTransferRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryGroupChatRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryGroupEventRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryLocalProfileRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryMessageRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryOutgoingQueueAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryPairingSessionRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryPeerRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryPendingAckRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryThreadMessageRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryThreadRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryChatMemberRepositoryAdapter
 import org.expert.link.mesh.infrastructure.adapter.InMemoryPacketTransportAdapter
 import org.expert.link.mesh.infrastructure.adapter.KtorPacketTransportAdapter
 
@@ -100,6 +107,11 @@ class MeshNodeBootstrap {
         val fileTransferRepositoryPort = InMemoryFileTransferRepositoryAdapter()
         val callSessionRepositoryPort = InMemoryCallSessionRepositoryAdapter()
         val eventLogRepositoryPort = InMemoryEventLogRepositoryAdapter()
+        val groupChatRepositoryPort = InMemoryGroupChatRepositoryAdapter()
+        val chatMemberRepositoryPort = InMemoryChatMemberRepositoryAdapter()
+        val threadRepositoryPort = InMemoryThreadRepositoryAdapter()
+        val threadMessageRepositoryPort = InMemoryThreadMessageRepositoryAdapter()
+        val groupEventRepositoryPort = InMemoryGroupEventRepositoryAdapter()
 
         val cryptoPort = BasicCryptoAdapter()
         val keyMaterialFactory = KeyMaterialFactory(cryptoPort)
@@ -216,6 +228,28 @@ class MeshNodeBootstrap {
             eventLogService,
             nodeMetricsService,
         )
+        val groupChatService = GroupChatService(
+            localProfileService = localProfileService,
+            conversationRepositoryPort = conversationRepositoryPort,
+            messageRepositoryPort = messageRepositoryPort,
+            groupChatRepositoryPort = groupChatRepositoryPort,
+            chatMemberRepositoryPort = chatMemberRepositoryPort,
+            groupEventRepositoryPort = groupEventRepositoryPort,
+            chatMessagingService = chatMessagingService,
+            eventLogService = eventLogService,
+            nodeMetricsService = nodeMetricsService,
+        )
+        val threadService = ThreadService(
+            localProfileService = localProfileService,
+            conversationRepositoryPort = conversationRepositoryPort,
+            messageRepositoryPort = messageRepositoryPort,
+            threadRepositoryPort = threadRepositoryPort,
+            threadMessageRepositoryPort = threadMessageRepositoryPort,
+            groupEventRepositoryPort = groupEventRepositoryPort,
+            chatMessagingService = chatMessagingService,
+            eventLogService = eventLogService,
+            nodeMetricsService = nodeMetricsService,
+        )
         val callSignalingService = CallSignalingService(
             localProfileService,
             peerTrustVerificationService,
@@ -291,8 +325,15 @@ class MeshNodeBootstrap {
             callSessionRepositoryPort = callSessionRepositoryPort,
             endpointCachePort = endpointCachePort,
             routeRepositoryPort = routeRepositoryPort,
+            groupChatRepositoryPort = groupChatRepositoryPort,
+            chatMemberRepositoryPort = chatMemberRepositoryPort,
+            threadRepositoryPort = threadRepositoryPort,
+            threadMessageRepositoryPort = threadMessageRepositoryPort,
+            groupEventRepositoryPort = groupEventRepositoryPort,
             blockListService = blockListService,
             chatMessagingService = chatMessagingService,
+            groupChatService = groupChatService,
+            threadService = threadService,
             fileTransferService = fileTransferService,
             callSignalingService = callSignalingService,
             routingService = liveRoutingService,

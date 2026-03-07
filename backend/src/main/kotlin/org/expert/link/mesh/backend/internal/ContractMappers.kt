@@ -22,6 +22,10 @@ import org.expert.link.mesh.contract.model.MeshCallSignal
 import org.expert.link.mesh.contract.model.MeshCallSignalType
 import org.expert.link.mesh.contract.model.MeshCallStatus
 import org.expert.link.mesh.contract.model.MeshChatMessage
+import org.expert.link.mesh.contract.model.MeshChatMember
+import org.expert.link.mesh.contract.model.MeshChatMemberRole
+import org.expert.link.mesh.contract.model.MeshChatSummary
+import org.expert.link.mesh.contract.model.MeshChatType
 import org.expert.link.mesh.contract.model.MeshConversation
 import org.expert.link.mesh.contract.model.MeshEventCategory
 import org.expert.link.mesh.contract.model.MeshEventLevel
@@ -29,9 +33,13 @@ import org.expert.link.mesh.contract.model.MeshEventLogEntry
 import org.expert.link.mesh.contract.model.MeshFileDescriptor
 import org.expert.link.mesh.contract.model.MeshFileTransferSession
 import org.expert.link.mesh.contract.model.MeshFileTransferStatus
+import org.expert.link.mesh.contract.model.MeshGroupChat
+import org.expert.link.mesh.contract.model.MeshGroupEvent
+import org.expert.link.mesh.contract.model.MeshGroupEventType
 import org.expert.link.mesh.contract.model.MeshLocalProfile
 import org.expert.link.mesh.contract.model.MeshMediaQualitySnapshot
 import org.expert.link.mesh.contract.model.MeshMessageDeliveryStatus
+import org.expert.link.mesh.contract.model.MeshMessageType
 import org.expert.link.mesh.contract.model.MeshMessageReceipt
 import org.expert.link.mesh.contract.model.MeshPairingRole
 import org.expert.link.mesh.contract.model.MeshPairingSession
@@ -43,6 +51,9 @@ import org.expert.link.mesh.contract.model.MeshNearbyPeer
 import org.expert.link.mesh.contract.model.MeshEndpointSource
 import org.expert.link.mesh.contract.model.MeshTransferDirection
 import org.expert.link.mesh.contract.model.MeshTrustState
+import org.expert.link.mesh.contract.model.MeshThreadSummary
+import org.expert.link.mesh.contract.model.MeshThread
+import org.expert.link.mesh.contract.model.MeshThreadMessage
 import org.expert.link.mesh.contract.model.MeshRouteHop
 import org.expert.link.mesh.contract.model.MeshRouteInfo
 import org.expert.link.mesh.contract.model.MeshRouteMode
@@ -66,9 +77,20 @@ import org.expert.link.mesh.domain.model.identity.PairingSessionRole
 import org.expert.link.mesh.domain.model.identity.PeerIdentity
 import org.expert.link.mesh.domain.model.identity.TrustState
 import org.expert.link.mesh.domain.model.messaging.ChatMessage
+import org.expert.link.mesh.domain.model.messaging.ChatMember
+import org.expert.link.mesh.domain.model.messaging.ChatMemberRole
+import org.expert.link.mesh.domain.model.messaging.ChatSummary
+import org.expert.link.mesh.domain.model.messaging.ChatThread
+import org.expert.link.mesh.domain.model.messaging.ChatType
 import org.expert.link.mesh.domain.model.messaging.Conversation
+import org.expert.link.mesh.domain.model.messaging.GroupChat
+import org.expert.link.mesh.domain.model.messaging.GroupChatEvent
+import org.expert.link.mesh.domain.model.messaging.GroupEventType
 import org.expert.link.mesh.domain.model.messaging.MessageDeliveryStatus
+import org.expert.link.mesh.domain.model.messaging.MessageType
 import org.expert.link.mesh.domain.model.messaging.MessageReceipt
+import org.expert.link.mesh.domain.model.messaging.ThreadMessage
+import org.expert.link.mesh.domain.model.messaging.ThreadSummary
 import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.network.PeerEndpointCandidate
 import org.expert.link.mesh.domain.model.network.RouteEntry
@@ -187,10 +209,25 @@ internal fun BlockedPeer.toContract(): MeshBlockedPeer = MeshBlockedPeer(
 
 internal fun Conversation.toContract(): MeshConversation = MeshConversation(
     conversationId = conversationId,
+    chatType = MeshChatType.valueOf(chatType.name),
+    title = title,
+    description = description,
+    createdByPeerId = createdByPeerId,
     participantPeerIds = participantPeerIds,
+    members = members.map(ChatMember::toContract),
     createdAt = createdAt,
     updatedAt = updatedAt,
     lastMessageId = lastMessageId,
+    unreadCount = unreadCount,
+    pinned = pinned,
+    archived = archived,
+)
+
+internal fun ChatMember.toContract(): MeshChatMember = MeshChatMember(
+    peerId = peerId,
+    displayName = displayName,
+    role = MeshChatMemberRole.valueOf(role.name),
+    joinedAt = joinedAt,
 )
 
 internal fun ChatMessage.toContract(): MeshChatMessage = MeshChatMessage(
@@ -199,10 +236,87 @@ internal fun ChatMessage.toContract(): MeshChatMessage = MeshChatMessage(
     senderPeerId = senderPeerId,
     recipientPeerId = recipientPeerId,
     body = body,
+    messageType = MeshMessageType.valueOf(messageType.name),
+    threadRootMessageId = threadRootMessageId,
+    parentMessageId = parentMessageId,
+    replyToMessageId = replyToMessageId,
+    threadReplyCount = threadReplyCount,
     deliveryStatus = MeshMessageDeliveryStatus.valueOf(deliveryStatus.name),
     createdAt = createdAt,
     deliveredAt = deliveredAt,
     failedAt = failedAt,
+)
+
+internal fun GroupChat.toContract(): MeshGroupChat = MeshGroupChat(
+    chatId = chatId,
+    title = title,
+    description = description,
+    createdByPeerId = createdByPeerId,
+    members = members.map(ChatMember::toContract),
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    lastMessageId = lastMessageId,
+    pinned = pinned,
+    archived = archived,
+)
+
+internal fun GroupChatEvent.toContract(): MeshGroupEvent = MeshGroupEvent(
+    eventId = eventId,
+    chatId = chatId,
+    eventType = MeshGroupEventType.valueOf(eventType.name),
+    actorPeerId = actorPeerId,
+    subjectPeerId = subjectPeerId,
+    text = text,
+    attributes = attributes,
+    createdAt = createdAt,
+)
+
+internal fun ChatSummary.toContract(): MeshChatSummary = MeshChatSummary(
+    chatId = chatId,
+    chatType = MeshChatType.valueOf(chatType.name),
+    title = title,
+    lastMessageId = lastMessageId,
+    lastMessagePreview = lastMessagePreview,
+    unreadCount = unreadCount,
+    participantCount = participantCount,
+    updatedAt = updatedAt,
+)
+
+internal fun ChatThread.toContract(): MeshThread = MeshThread(
+    threadId = threadId,
+    chatId = chatId,
+    rootMessageId = rootMessageId,
+    rootSenderPeerId = rootSenderPeerId,
+    createdByPeerId = createdByPeerId,
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    replyCount = replyCount,
+    lastReplyMessageId = lastReplyMessageId,
+    participantPeerIds = participantPeerIds,
+)
+
+internal fun ThreadMessage.toContract(): MeshThreadMessage = MeshThreadMessage(
+    threadId = threadId,
+    chatId = chatId,
+    rootMessageId = rootMessageId,
+    messageId = messageId,
+    senderPeerId = senderPeerId,
+    body = body,
+    parentMessageId = parentMessageId,
+    replyToMessageId = replyToMessageId,
+    deliveryStatus = MeshMessageDeliveryStatus.valueOf(deliveryStatus.name),
+    createdAt = createdAt,
+    deliveredAt = deliveredAt,
+    failedAt = failedAt,
+)
+
+internal fun ThreadSummary.toContract(): MeshThreadSummary = MeshThreadSummary(
+    threadId = threadId,
+    chatId = chatId,
+    rootMessageId = rootMessageId,
+    replyCount = replyCount,
+    lastReplyAt = lastReplyAt,
+    participantPeerIds = participantPeerIds,
 )
 
 internal fun MessageReceipt.toContract(): MeshMessageReceipt = MeshMessageReceipt(

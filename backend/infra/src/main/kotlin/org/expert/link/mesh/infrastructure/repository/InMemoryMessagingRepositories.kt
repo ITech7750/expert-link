@@ -7,6 +7,7 @@ import org.expert.link.mesh.application.support.now
 import org.expert.link.mesh.domain.model.messaging.ChatMessage
 import org.expert.link.mesh.domain.model.messaging.Conversation
 import org.expert.link.mesh.domain.model.messaging.MessageDeliveryStatus
+import org.expert.link.mesh.domain.model.messaging.ThreadSummary
 import org.expert.link.mesh.domain.model.network.PendingAckRecord
 import org.expert.link.mesh.domain.port.repository.ConversationRepositoryPort
 import org.expert.link.mesh.domain.port.repository.MessageRepositoryPort
@@ -48,6 +49,30 @@ class InMemoryMessageRepositoryAdapter : MessageRepositoryPort {
         messages.values.filter { it.conversationId == conversationId }
     }
 
+    override suspend fun listByThread(conversationId: String, rootMessageId: String): List<ChatMessage> = mutex.withLock {
+        messages.values.filter {
+            it.conversationId == conversationId && it.threadRootMessageId == rootMessageId
+        }
+    }
+
+    override suspend fun getThreadSummary(conversationId: String, rootMessageId: String): ThreadSummary? = mutex.withLock {
+        val threadMessages = messages.values.filter {
+            it.conversationId == conversationId && it.threadRootMessageId == rootMessageId
+        }
+        if (threadMessages.isEmpty()) {
+            null
+        } else {
+            ThreadSummary(
+                threadId = "thread-$rootMessageId",
+                chatId = conversationId,
+                rootMessageId = rootMessageId,
+                replyCount = threadMessages.size,
+                lastReplyAt = threadMessages.maxByOrNull { it.createdAt }?.createdAt,
+                participantPeerIds = threadMessages.map { it.senderPeerId }.toSet(),
+            )
+        }
+    }
+
     override suspend fun updateStatus(messageId: String, status: MessageDeliveryStatus): ChatMessage? = mutex.withLock {
         messages[messageId]?.let { current ->
             val updated = current.copy(
@@ -55,6 +80,14 @@ class InMemoryMessageRepositoryAdapter : MessageRepositoryPort {
                 deliveredAt = if (status == MessageDeliveryStatus.DELIVERED) now() else current.deliveredAt,
                 failedAt = if (status == MessageDeliveryStatus.FAILED) now() else current.failedAt,
             )
+            messages[messageId] = updated
+            updated
+        }
+    }
+
+    override suspend fun updateThreadReplyCount(messageId: String, replyCount: Int): ChatMessage? = mutex.withLock {
+        messages[messageId]?.let { current ->
+            val updated = current.copy(threadReplyCount = replyCount)
             messages[messageId] = updated
             updated
         }

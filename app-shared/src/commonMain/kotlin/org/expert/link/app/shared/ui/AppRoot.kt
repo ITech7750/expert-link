@@ -41,12 +41,14 @@ import org.expert.link.app.shared.ui.screens.ChatScreen
 import org.expert.link.app.shared.ui.screens.ChatsScreen
 import org.expert.link.app.shared.ui.screens.ContactsScreen
 import org.expert.link.app.shared.ui.screens.DiagnosticsScreen
+import org.expert.link.app.shared.ui.screens.GroupScreen
 import org.expert.link.app.shared.ui.screens.HomeScreen
 import org.expert.link.app.shared.ui.screens.LoadingScreen
 import org.expert.link.app.shared.ui.screens.NearbyScreen
 import org.expert.link.app.shared.ui.screens.PairingScreen
 import org.expert.link.app.shared.ui.screens.ProfileScreen
 import org.expert.link.app.shared.ui.screens.SettingsScreen
+import org.expert.link.app.shared.ui.screens.ThreadScreen
 import org.expert.link.app.shared.ui.screens.TransfersScreen
 
 /** Корневой Compose UI клиентского приложения. */
@@ -169,6 +171,7 @@ fun ExpertLinkApp(services: AppPlatformServices) {
                     AppRoute.Chats -> ChatsScreen(
                         store = store.chats,
                         onOpenConversation = { conversationId, peerId -> store.navigator.push(AppRoute.Dialog(conversationId, peerId)) },
+                        onOpenGroup = { chatId -> store.navigator.push(AppRoute.Group(chatId)) },
                         onOpenContacts = { store.navigator.push(AppRoute.Contacts) },
                     )
                     is AppRoute.Dialog -> {
@@ -186,7 +189,26 @@ fun ExpertLinkApp(services: AppPlatformServices) {
                                 store.transfers.prefill(peerId, conversationId)
                                 store.navigator.push(AppRoute.Transfers)
                             },
+                            onOpenThread = { rootMessageId ->
+                                store.navigator.push(AppRoute.Thread(route.conversationId, rootMessageId))
+                            },
                         )
+                    }
+                    is AppRoute.Group -> {
+                        LaunchedEffect(route.chatId) {
+                            store.group.bind(route.chatId)
+                        }
+                        GroupScreen(
+                            store = store.group,
+                            onOpenChat = { chatId -> store.navigator.push(AppRoute.Dialog(chatId, "")) },
+                            onOpenThread = { chatId, rootMessageId -> store.navigator.push(AppRoute.Thread(chatId, rootMessageId)) },
+                        )
+                    }
+                    is AppRoute.Thread -> {
+                        LaunchedEffect(route.chatId, route.rootMessageId) {
+                            store.thread.bind(route.chatId, route.rootMessageId)
+                        }
+                        ThreadScreen(store = store.thread)
                     }
                     AppRoute.Transfers -> TransfersScreen(
                         store = store.transfers,
