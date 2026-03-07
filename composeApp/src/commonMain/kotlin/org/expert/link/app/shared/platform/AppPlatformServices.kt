@@ -17,6 +17,7 @@ data class PlatformCapabilities(
     val canSaveFiles: Boolean = false,
     val canRenderQr: Boolean = false,
     val canScanQr: Boolean = false,
+    val canSwitchCamera: Boolean = false,
     val canPickFile: Boolean = false,
     val prefersWideLayout: Boolean = false,
 )

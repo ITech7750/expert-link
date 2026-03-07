@@ -154,6 +154,7 @@ class CallSignalingService(
             targetPublicKey = trustedPeer.peerIdentity.publicKey,
             packetType = PacketType.CALL_INVITE,
             payload = payload,
+            requiresAck = true,
             conversationId = conversationId,
         )
         trace("startDirectCall sent invite call=$callId recipient=$recipientPeerId")
@@ -263,6 +264,7 @@ class CallSignalingService(
                     offer = offer,
                     createdAt = startedAt,
                 ),
+                requiresAck = true,
                 conversationId = conversationId,
             )
             appendEvent(
@@ -500,6 +502,10 @@ class CallSignalingService(
             reconnectAttempts = if (nextState == CallState.RECONNECTING) session.reconnectAttempts + 1 else session.reconnectAttempts,
         )
         persistSession(updated)
+        trace(
+            "handleSignal updated session call=${signal.callId} previous=${session.status} next=$nextState " +
+                "participantState=${signal.participantState ?: participantStateFromSignal(signal.signalType)}",
+        )
         appendEvent(
             callId = signal.callId,
             roomId = updated.roomId,
@@ -533,6 +539,7 @@ class CallSignalingService(
                     reason = reason,
                     createdAt = now(),
                 ),
+                requiresAck = true,
                 conversationId = session.conversationId,
             )
         }
@@ -583,6 +590,7 @@ class CallSignalingService(
                 reason = reason,
                 createdAt = now(),
             ),
+            requiresAck = true,
             conversationId = session.conversationId,
         )
         return end(callId, reason)
@@ -675,6 +683,7 @@ class CallSignalingService(
             targetPublicKey = trustedPeer.peerIdentity.publicKey,
             packetType = PacketType.CALL_SIGNAL,
             payload = CallSignalPayload(signal),
+            requiresAck = true,
             conversationId = session?.conversationId,
         )
         nodeMetricsService.increment("call.signal.sent")
@@ -704,6 +713,7 @@ class CallSignalingService(
             reconnectAttempts = if (nextState == CallState.RECONNECTING) session.reconnectAttempts + 1 else session.reconnectAttempts,
         )
         persistSession(updated)
+        trace("transitionAndPersist call=$callId signal=$signalType previous=${session.status} next=$nextState actor=$actorPeerId")
         appendEvent(
             callId = callId,
             roomId = updated.roomId,
@@ -756,6 +766,7 @@ class CallSignalingService(
         targetPublicKey: String,
         packetType: PacketType,
         payload: PacketPayload,
+        requiresAck: Boolean = false,
         conversationId: String? = null,
     ) {
         val localProfile = localProfileService.require()
@@ -767,7 +778,7 @@ class CallSignalingService(
             encryptedPayload = encrypted,
             routeMode = RouteMode.LOCAL_DIRECT,
             ttl = 5,
-            requiresAck = false,
+            requiresAck = requiresAck,
             conversationId = conversationId,
         )
         val signed = packetSignatureService.signEnvelope(localProfile.privateKey, unsigned)
@@ -795,7 +806,11 @@ class CallSignalingService(
         CallSignalType.SDP_OFFER,
         CallSignalType.ICE_CANDIDATE,
         -> when (current) {
-            CallState.ACCEPTED, CallState.CONNECTING, CallState.OUTGOING, CallState.INCOMING, CallState.RINGING -> CallState.CONNECTING
+            // Incoming calls must remain accept/reject-able until the local side explicitly accepts or joins.
+            CallState.INCOMING,
+            CallState.RINGING,
+            -> current
+            CallState.ACCEPTED, CallState.CONNECTING, CallState.OUTGOING -> CallState.CONNECTING
             else -> current
         }
         CallSignalType.PARTICIPANT_STATE,

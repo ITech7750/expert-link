@@ -28,9 +28,88 @@ import org.expert.link.mesh.contract.model.MeshPeerMediaState
 import org.expert.link.mesh.contract.model.MeshSdpType
 import org.expert.link.mesh.contract.model.MeshSessionDescription
 import org.expert.link.mesh.contract.model.MeshWebRtcSignalEvent
+import org.expert.link.mesh.domain.model.network.PacketType
+import org.expert.link.mesh.backend.internal.toDomain
+import org.expert.link.mesh.infrastructure.adapter.InMemoryPacketTransportAdapter
 import org.junit.jupiter.api.Test
 
 class MeshBackendCallRaceIntegrationTest {
+    @Test
+    fun `should retry dropped call signal carrying answer`() = runBlocking {
+        val aliceMedia = AnswerAwareMediaEngine(owner = "alice")
+        val bobMedia = AnswerAwareMediaEngine(owner = "bob")
+        val alice = MeshBackend.launch(config("race-retry-a", 20101), mediaEngine = aliceMedia)
+        val bob = MeshBackend.launch(config("race-retry-b", 20102), mediaEngine = bobMedia)
+        try {
+            connectBidirectional(alice, bob)
+            pair(alice, bob)
+
+            val outbound = alice.startVideoCall(
+                MeshStartCallCommand(
+                    targetPeerId = bob.profile.peerId,
+                    offer = null,
+                ),
+            )
+            val incoming = waitForIncomingCall(bob, outbound.callId)
+            assertThat(incoming).isNotNull()
+
+            InMemoryPacketTransportAdapter.dropNext(alice.endpoint.toDomain(), PacketType.CALL_SIGNAL)
+
+            bob.acceptCall(
+                MeshAcceptCallCommand(
+                    callId = outbound.callId,
+                    recipientPeerId = alice.profile.peerId,
+                    answer = null,
+                ),
+            )
+
+            repeat(25) {
+                if (aliceMedia.answerAppliedCount(outbound.callId) > 0) return@repeat
+                delay(200)
+            }
+
+            assertThat(aliceMedia.answerAppliedCount(outbound.callId)).isGreaterThan(0)
+        } finally {
+            runCatching { alice.stop() }
+            runCatching { bob.stop() }
+        }
+    }
+
+    @Test
+    fun `should keep incoming call actionable after remote offer arrives before local accept`() = runBlocking {
+        val aliceMedia = DelayedOfferStrictMediaEngine(owner = "alice", offerDelayMillis = 0)
+        val bobMedia = DelayedOfferStrictMediaEngine(owner = "bob", offerDelayMillis = 0)
+        val alice = MeshBackend.launch(config("race-ui-a", 20071), mediaEngine = aliceMedia)
+        val bob = MeshBackend.launch(config("race-ui-b", 20072), mediaEngine = bobMedia)
+        try {
+            connectBidirectional(alice, bob)
+            pair(alice, bob)
+
+            val outbound = alice.startVideoCall(
+                MeshStartCallCommand(
+                    targetPeerId = bob.profile.peerId,
+                    offer = null,
+                ),
+            )
+
+            repeat(20) {
+                val incoming = bob.observeIncomingCalls().firstOrNull { it.callId == outbound.callId }
+                if (incoming != null) {
+                    assertThat(incoming.status.name).isIn("INCOMING", "RINGING")
+                    return@runBlocking
+                }
+                delay(100)
+            }
+
+            val sessions = bob.callSessions().filter { it.callId == outbound.callId }
+            assertThat(sessions).isNotEmpty()
+            assertThat(sessions.first().status.name).isIn("INCOMING", "RINGING")
+        } finally {
+            runCatching { alice.stop() }
+            runCatching { bob.stop() }
+        }
+    }
+
     @Test
     fun `should still send answer when accept happens before remote offer arrives`() = runBlocking {
         val aliceMedia = DelayedOfferStrictMediaEngine(owner = "alice", offerDelayMillis = 450)
@@ -204,6 +283,30 @@ private class EarlyIceMediaEngine(
     fun appliedIceCount(callId: String): Int = sessions[callId]?.appliedIceCount ?: 0
 }
 
+private class AnswerAwareMediaEngine(
+    private val owner: String,
+) : MeshMediaEngine {
+    private val sessions = linkedMapOf<String, AnswerAwareWebRtcSession>()
+
+    override val isSupported: Boolean = true
+
+    override suspend fun openSession(config: MeshMediaSessionConfig): MeshWebRtcSession {
+        return sessions.getOrPut(config.callId) {
+            AnswerAwareWebRtcSession(owner = owner, config = config)
+        }
+    }
+
+    override suspend fun findSession(callId: String): MeshWebRtcSession? = sessions[callId]
+
+    override suspend fun listSessions(): List<MeshWebRtcSession> = sessions.values.toList()
+
+    override suspend fun closeSession(callId: String) {
+        sessions.remove(callId)?.close()
+    }
+
+    fun answerAppliedCount(callId: String): Int = sessions[callId]?.answerAppliedCount ?: 0
+}
+
 private class DelayedOfferStrictWebRtcSession(
     private val owner: String,
     config: MeshMediaSessionConfig,
@@ -287,6 +390,104 @@ private class DelayedOfferStrictWebRtcSession(
             jitterMs = 2,
             outboundBitrateKbps = 256,
             inboundBitrateKbps = 256,
+            capturedAt = Clock.System.now(),
+        )
+    }
+
+    override fun signalEvents(): Flow<MeshWebRtcSignalEvent> = signalFlow.asSharedFlow()
+
+    override fun stateUpdates(): Flow<MeshCallMediaState> = stateFlow.asStateFlow()
+
+    override fun statsUpdates(): Flow<MeshMediaStats> = statsFlow.asSharedFlow()
+
+    override suspend fun close() = Unit
+}
+
+private class AnswerAwareWebRtcSession(
+    private val owner: String,
+    config: MeshMediaSessionConfig,
+) : MeshWebRtcSession {
+    override val callId: String = config.callId
+    override val localPeerId: String = config.localPeerId
+    override val remotePeerIds: Set<String> = config.remotePeerIds
+
+    private val signalFlow = MutableSharedFlow<MeshWebRtcSignalEvent>(extraBufferCapacity = 16)
+    private val statsFlow = MutableSharedFlow<MeshMediaStats>(extraBufferCapacity = 4)
+    private val stateFlow = MutableStateFlow(
+        MeshCallMediaState(
+            callId = callId,
+            localPeerId = localPeerId,
+            localAudioEnabled = true,
+            localVideoEnabled = true,
+            cameraFacing = MeshCameraFacing.FRONT,
+            connectionState = MeshMediaConnectionState.NEW,
+            peers = remotePeerIds.map { peerId ->
+                MeshPeerMediaState(
+                    peerId = peerId,
+                    audioEnabled = false,
+                    videoEnabled = false,
+                    hasAudioTrack = false,
+                    hasVideoTrack = false,
+                    connectionState = MeshMediaConnectionState.NEW,
+                )
+            },
+            updatedAt = Clock.System.now(),
+            errorMessage = null,
+        ),
+    )
+
+    private var hasRemoteOffer = false
+    var answerAppliedCount: Int = 0
+        private set
+
+    override suspend fun createOffer(): MeshSessionDescription {
+        return MeshSessionDescription(MeshSdpType.OFFER, "offer-$owner-$callId")
+    }
+
+    override suspend fun createAnswer(): MeshSessionDescription {
+        check(hasRemoteOffer) { "Remote offer is required before answer creation" }
+        return MeshSessionDescription(MeshSdpType.ANSWER, "answer-$owner-$callId")
+    }
+
+    override suspend fun setRemoteDescription(description: MeshSessionDescription) {
+        when (description.type) {
+            MeshSdpType.OFFER -> hasRemoteOffer = true
+            MeshSdpType.ANSWER -> answerAppliedCount += 1
+        }
+        stateFlow.value = stateFlow.value.copy(
+            connectionState = MeshMediaConnectionState.CONNECTING,
+            updatedAt = Clock.System.now(),
+        )
+    }
+
+    override suspend fun addIceCandidate(candidate: MeshIceCandidate) = Unit
+
+    override suspend fun setMicrophoneEnabled(enabled: Boolean) = Unit
+
+    override suspend fun isMicrophoneEnabled(): Boolean = true
+
+    override suspend fun setCameraEnabled(enabled: Boolean) = Unit
+
+    override suspend fun isCameraEnabled(): Boolean = true
+
+    override suspend fun switchCamera() = Unit
+
+    override suspend fun attachLocalRenderer(rendererId: String) = Unit
+
+    override suspend fun attachRemoteRenderer(peerId: String, rendererId: String) = Unit
+
+    override suspend fun detachRenderer(rendererId: String) = Unit
+
+    override suspend fun currentState(): MeshCallMediaState = stateFlow.value
+
+    override suspend fun currentStats(): MeshMediaStats {
+        return MeshMediaStats(
+            callId = callId,
+            rttMs = 10,
+            packetLossPercent = 0.0,
+            jitterMs = 1,
+            outboundBitrateKbps = 128,
+            inboundBitrateKbps = 128,
             capturedAt = Clock.System.now(),
         )
     }
