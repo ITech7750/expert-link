@@ -72,6 +72,7 @@ kotlin {
                 implementation(libs.androidxCoreKtx)
                 implementation(libs.androidxActivityCompose)
                 implementation(libs.zxingCore)
+                implementation(libs.zxingAndroidEmbedded)
                 implementation(libs.googleWebrtc)
             }
         }

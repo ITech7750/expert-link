@@ -130,6 +130,11 @@ internal class DesktopVideoPanel(
 ) : JPanel(), VideoTrackSink {
     @Volatile
     private var image: BufferedImage? = null
+    private var reusableImage: BufferedImage? = null
+    private var reusableArgb: ByteArray = ByteArray(0)
+    private var reusablePixels: IntArray = IntArray(0)
+    @Volatile
+    private var lastRenderedAtNs: Long = 0L
 
     init {
         background = Color(0x10, 0x12, 0x16)
@@ -138,29 +143,42 @@ internal class DesktopVideoPanel(
 
     override fun onVideoFrame(frame: VideoFrame) {
         runCatching {
+            val nowNs = System.nanoTime()
+            if (nowNs - lastRenderedAtNs < 33_000_000L) {
+                return
+            }
+            lastRenderedAtNs = nowNs
             val width = frame.buffer.width
             val height = frame.buffer.height
             if (width <= 0 || height <= 0) {
                 return
             }
-            val argb = ByteArray(width * height * 4)
-            VideoBufferConverter.convertFromI420(frame.buffer, argb, FourCC.ARGB)
-            val next = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
-            val pixels = IntArray(width * height)
+            val pixelCount = width * height
+            val requiredBytes = pixelCount * 4
+            if (reusableArgb.size != requiredBytes) {
+                reusableArgb = ByteArray(requiredBytes)
+            }
+            if (reusablePixels.size != pixelCount) {
+                reusablePixels = IntArray(pixelCount)
+            }
+            if (reusableImage == null || reusableImage?.width != width || reusableImage?.height != height) {
+                reusableImage = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+            }
+            VideoBufferConverter.convertFromI420(frame.buffer, reusableArgb, FourCC.ARGB)
             var src = 0
             var index = 0
-            while (index < pixels.size) {
-                val a = argb[src].toInt() and 0xFF
-                val r = argb[src + 1].toInt() and 0xFF
-                val g = argb[src + 2].toInt() and 0xFF
-                val b = argb[src + 3].toInt() and 0xFF
-                pixels[index] = (a shl 24) or (r shl 16) or (g shl 8) or b
+            while (index < reusablePixels.size) {
+                val a = reusableArgb[src].toInt() and 0xFF
+                val r = reusableArgb[src + 1].toInt() and 0xFF
+                val g = reusableArgb[src + 2].toInt() and 0xFF
+                val b = reusableArgb[src + 3].toInt() and 0xFF
+                reusablePixels[index] = (a shl 24) or (r shl 16) or (g shl 8) or b
                 src += 4
                 index++
             }
-            next.setRGB(0, 0, width, height, pixels, 0, width)
+            reusableImage?.setRGB(0, 0, width, height, reusablePixels, 0, width)
             SwingUtilities.invokeLater {
-                image = next
+                image = reusableImage
                 repaint()
             }
         }
@@ -168,6 +186,9 @@ internal class DesktopVideoPanel(
 
     fun clearFrame() {
         image = null
+        reusableImage = null
+        reusableArgb = ByteArray(0)
+        reusablePixels = IntArray(0)
         repaint()
     }
 
@@ -186,4 +207,3 @@ internal class DesktopVideoPanel(
         g2.drawImage(frame, 0, 0, width, height, null)
     }
 }
-

@@ -12,6 +12,7 @@ androidGradlePlugin = "8.7.2"
 androidxActivityCompose = "1.10.1"
 androidxCore = "1.15.0"
 zxing = "3.5.3"
+zxingAndroidEmbedded = "4.3.0"
 googleWebrtc = "137.7151.05"
 webrtcJava = "0.14.0"
 junit = "5.11.4"
@@ -43,6 +44,7 @@ assertjCore = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 androidxActivityCompose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivityCompose" }
 androidxCoreKtx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 zxingCore = { module = "com.google.zxing:core", version.ref = "zxing" }
+zxingAndroidEmbedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
 googleWebrtc = { module = "io.github.webrtc-sdk:android", version.ref = "googleWebrtc" }
 webrtcJava = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtcJava" }
 

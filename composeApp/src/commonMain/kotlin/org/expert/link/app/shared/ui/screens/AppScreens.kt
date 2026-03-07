@@ -326,7 +326,23 @@ fun PairingScreen(
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(
-                                onClick = { onShowMessage("Откройте камеру и отсканируйте приглашение") },
+                                onClick = {
+                                    scope.launch {
+                                        services.scanQr()
+                                            .onSuccess { scanned ->
+                                                val value = scanned?.trim().orEmpty()
+                                                if (value.isNotEmpty()) {
+                                                    store.updateInviteInput(value)
+                                                    onShowMessage("Код считан")
+                                                } else {
+                                                    onShowMessage("QR не распознан")
+                                                }
+                                            }
+                                            .onFailure { error ->
+                                                onShowMessage(error.message ?: "Не удалось запустить сканер")
+                                            }
+                                    }
+                                },
                                 enabled = services.capabilities.canScanQr,
                             ) { Text("Сканировать") }
                             OutlinedButton(onClick = { store.updateInviteInput("") }) { Text("Ввести вручную") }

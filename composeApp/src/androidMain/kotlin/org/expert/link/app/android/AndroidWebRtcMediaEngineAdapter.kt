@@ -1,7 +1,10 @@
 package org.expert.link.app.android
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Build
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -37,6 +40,8 @@ import org.expert.link.mesh.contract.model.MeshSessionDescription
 import org.expert.link.mesh.contract.model.MeshWebRtcSignalEvent
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
+import org.webrtc.Camera1Enumerator
+import org.webrtc.CameraEnumerator
 import org.webrtc.CameraEnumerationAndroid
 import org.webrtc.Camera2Enumerator
 import org.webrtc.CameraVideoCapturer
@@ -139,6 +144,7 @@ private class AndroidWebRtcSession(
     private val audioManager: AudioManager? = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var previousAudioMode: Int? = null
     private var previousSpeakerphone: Boolean? = null
+    private var focusRequest: AudioFocusRequest? = null
 
     private var lastStatsAtMs: Long = 0L
     private var lastBytesOut: Long = 0L
@@ -416,6 +422,7 @@ private class AndroidWebRtcSession(
                 MediaStreamTrack.AUDIO_TRACK_KIND -> {
                     val audio = track as? AudioTrack
                     if (audio != null && mappedPeerId != null) {
+                        audio.setEnabled(true)
                         remoteAudioTracks[mappedPeerId] = audio
                     }
                     markRemoteTrack(audio = true, video = false)
@@ -423,6 +430,7 @@ private class AndroidWebRtcSession(
                 MediaStreamTrack.VIDEO_TRACK_KIND -> {
                     val video = track as? VideoTrack
                     if (video != null) {
+                        video.setEnabled(true)
                         val resolvedPeerId = mappedPeerId ?: remotePeerIds.firstOrNull()
                         if (resolvedPeerId != null) {
                             remoteVideoTracks[resolvedPeerId] = video
@@ -440,7 +448,14 @@ private class AndroidWebRtcSession(
     }
 
     private fun prepareLocalTracks() {
-        audioSource = factory.createAudioSource(MediaConstraints())
+        audioSource = factory.createAudioSource(
+            MediaConstraints().apply {
+                optional.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
+                optional.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
+                optional.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
+                optional.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
+            },
+        )
         audioTrack = factory.createAudioTrack("audio-$callId", audioSource)
         audioTrack?.setEnabled(true)
 
@@ -517,13 +532,28 @@ private class AndroidWebRtcSession(
     }
 
     private fun createVideoCapturer(): VideoCapturer? {
-        val enumerator = Camera2Enumerator(context)
+        val enumerators = buildList<CameraEnumerator> {
+            if (Camera2Enumerator.isSupported(context)) {
+                add(Camera2Enumerator(context))
+            }
+            add(Camera1Enumerator(true))
+        }
+        enumerators.forEach { enumerator ->
+            val capturer = createVideoCapturer(enumerator)
+            if (capturer != null) {
+                return capturer
+            }
+        }
+        return null
+    }
+
+    private fun createVideoCapturer(enumerator: CameraEnumerator): VideoCapturer? {
         val deviceNames = enumerator.deviceNames
         val preferred = deviceNames.firstOrNull { enumerator.isFrontFacing(it) }
             ?: deviceNames.firstOrNull { enumerator.isBackFacing(it) }
             ?: deviceNames.firstOrNull()
             ?: return null
-        preferredCaptureFormat = enumerator.preferredFormat(preferred)
+        preferredCaptureFormat = if (enumerator is Camera2Enumerator) enumerator.preferredFormat(preferred) else null
         updateState { current ->
             current.copy(
                 cameraFacing = if (enumerator.isFrontFacing(preferred)) MeshCameraFacing.FRONT else MeshCameraFacing.BACK,
@@ -654,6 +684,22 @@ private class AndroidWebRtcSession(
         previousAudioMode = manager.mode
         previousSpeakerphone = manager.isSpeakerphoneOn
         runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build(),
+                    )
+                    .setAcceptsDelayedFocusGain(false)
+                    .build()
+                manager.requestAudioFocus(request)
+                focusRequest = request
+            } else {
+                @Suppress("DEPRECATION")
+                manager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            }
             manager.mode = AudioManager.MODE_IN_COMMUNICATION
             manager.isSpeakerphoneOn = true
         }
@@ -662,6 +708,13 @@ private class AndroidWebRtcSession(
     private fun restoreAudioRouting() {
         val manager = audioManager ?: return
         runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                focusRequest?.let { manager.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                manager.abandonAudioFocus(null)
+            }
+            focusRequest = null
             previousAudioMode?.let { manager.mode = it }
             previousSpeakerphone?.let { manager.isSpeakerphoneOn = it }
         }

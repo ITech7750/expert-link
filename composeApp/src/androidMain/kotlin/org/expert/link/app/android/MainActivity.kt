@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initializeAppPlatformContext(applicationContext)
+        AndroidQrScanner.register(this)
         requestCallPermissionsIfNeeded()
         setContent {
             ExpertLinkApp(AppPlatformServices())

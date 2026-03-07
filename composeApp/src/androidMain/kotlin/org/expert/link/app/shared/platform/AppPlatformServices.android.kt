@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import org.expert.link.app.android.AndroidMulticastSupport
+import org.expert.link.app.android.AndroidQrScanner
 import org.expert.link.app.android.AndroidWebRtcMediaEngineAdapter
 import org.expert.link.app.android.buildAndroidQrCode
 import org.expert.link.mesh.backend.MeshBackend
@@ -46,7 +47,7 @@ actual class AppPlatformServices actual constructor(
         canCopyText = true,
         canShareText = true,
         canRenderQr = true,
-        canScanQr = false,
+        canScanQr = true,
         canPickFile = false,
         prefersWideLayout = false,
     )
@@ -79,6 +80,10 @@ actual class AppPlatformServices actual constructor(
     }
 
     actual suspend fun pickFile(): Result<String?> = Result.success(null)
+
+    actual suspend fun scanQr(): Result<String?> = runCatching {
+        AndroidQrScanner.scan()
+    }
 
     actual fun buildQrCode(text: String): QrCodeMatrix? = buildAndroidQrCode(text)
 }

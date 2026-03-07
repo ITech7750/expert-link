@@ -50,6 +50,9 @@ expect class AppPlatformServices(args: List<String> = emptyList()) {
     /** Открывает системный выбор файла. */
     suspend fun pickFile(): Result<String?>
 
+    /** Запускает сканирование QR-кода и возвращает считанную строку. */
+    suspend fun scanQr(): Result<String?>
+
     /** Строит QR-код для строки invite, если платформа это поддерживает. */
     fun buildQrCode(text: String): QrCodeMatrix?
 }

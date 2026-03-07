@@ -24,22 +24,14 @@ import dev.onvoid.webrtc.SetSessionDescriptionObserver
 import dev.onvoid.webrtc.media.MediaDevices
 import dev.onvoid.webrtc.media.MediaStream
 import dev.onvoid.webrtc.media.MediaStreamTrack
-import dev.onvoid.webrtc.media.audio.AudioDevice
-import dev.onvoid.webrtc.media.audio.AudioPlayer
-import dev.onvoid.webrtc.media.audio.AudioRecorder
-import dev.onvoid.webrtc.media.audio.AudioSink
-import dev.onvoid.webrtc.media.audio.AudioSource
 import dev.onvoid.webrtc.media.audio.AudioOptions
 import dev.onvoid.webrtc.media.audio.AudioTrack
 import dev.onvoid.webrtc.media.audio.AudioTrackSource
-import dev.onvoid.webrtc.media.audio.AudioTrackSink
-import dev.onvoid.webrtc.media.audio.CustomAudioSource
 import dev.onvoid.webrtc.media.video.VideoCaptureCapability
 import dev.onvoid.webrtc.media.video.VideoDevice
 import dev.onvoid.webrtc.media.video.VideoDeviceSource
 import dev.onvoid.webrtc.media.video.VideoTrack
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.math.min
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CoroutineScope
@@ -112,18 +104,14 @@ private class DesktopWebRtcSession(
     private val stateFlow = MutableStateFlow(initialState())
     private val statsFlow = MutableSharedFlow<MeshMediaStats>(replay = 1, extraBufferCapacity = 32)
 
-    private var customAudioSource: CustomAudioSource? = null
     private var audioSource: AudioTrackSource? = null
     private var audioTrack: AudioTrack? = null
-    private var audioRecorder: AudioRecorder? = null
-    private var audioPlayer: AudioPlayer? = null
     private var videoSource: VideoDeviceSource? = null
     private var videoTrack: VideoTrack? = null
     private var activeVideoDevice: VideoDevice? = null
     private var activeVideoCapability: VideoCaptureCapability? = null
     private val remoteAudioTracks = mutableMapOf<String, AudioTrack>()
     private val remoteVideoTracks = mutableMapOf<String, VideoTrack>()
-    private val playbackBridge = DesktopAudioPlaybackBridge()
     private var statsJob: Job? = null
 
     private var lastStatsAtMs: Long = 0L
@@ -246,15 +234,11 @@ private class DesktopWebRtcSession(
         statsJob?.cancel()
 
         runCatching { videoSource?.stop() }
-        runCatching { audioRecorder?.stop() }
-        runCatching { audioPlayer?.stop() }
-        remoteAudioTracks.values.forEach { track -> runCatching { track.removeSink(playbackBridge) } }
         remoteAudioTracks.clear()
         remoteVideoTracks.clear()
         DesktopVideoTrackRegistry.clearCall(callId)
         runCatching { videoTrack?.dispose() }
         runCatching { audioTrack?.dispose() }
-        runCatching { customAudioSource?.dispose() }
         runCatching { videoSource?.dispose() }
         runCatching { peerConnection.close() }
 
@@ -379,14 +363,15 @@ private class DesktopWebRtcSession(
                 MediaStreamTrack.AUDIO_TRACK_KIND -> {
                     val audio = track as? AudioTrack
                     if (audio != null && mappedPeerId != null) {
+                        audio.setEnabled(true)
                         remoteAudioTracks[mappedPeerId] = audio
-                        runCatching { audio.addSink(playbackBridge) }
                     }
                     markRemoteTrack(audio = true, video = false)
                 }
                 MediaStreamTrack.VIDEO_TRACK_KIND -> {
                     val video = track as? VideoTrack
                     if (video != null && mappedPeerId != null) {
+                        video.setEnabled(true)
                         remoteVideoTracks[mappedPeerId] = video
                         DesktopVideoTrackRegistry.registerRemoteTrack(callId, mappedPeerId, video)
                     }
@@ -397,15 +382,16 @@ private class DesktopWebRtcSession(
     }
 
     private fun prepareLocalTracks() {
-        // На desktop используем explicit recorder + custom source, чтобы звук стабильно
-        // работал независимо от поведения платформенного ADM.
-        val source = CustomAudioSource()
-        customAudioSource = source
-        audioSource = source
-        audioTrack = factory.createAudioTrack("audio-$callId", source)
+        audioSource = factory.createAudioSource(
+            AudioOptions().apply {
+                echoCancellation = true
+                autoGainControl = true
+                noiseSuppression = true
+                highpassFilter = true
+            },
+        )
+        audioTrack = factory.createAudioTrack("audio-$callId", audioSource)
         audioTrack?.setEnabled(true)
-        startAudioCapture(source)
-        startAudioPlayout()
 
         if (config.callType == MeshCallType.VIDEO) {
             runCatching {
@@ -458,49 +444,6 @@ private class DesktopWebRtcSession(
         configureSenderBitrates()
     }
 
-    private fun startAudioCapture(source: CustomAudioSource) {
-        val recorder = AudioRecorder()
-        val captureDevice = runCatching { MediaDevices.getDefaultAudioCaptureDevice() }.getOrNull()
-        if (captureDevice != null) {
-            recorder.setAudioDevice(captureDevice)
-        }
-        recorder.setAudioSink(
-            AudioSink { audioSamples, nSamples, nBytesPerSample, nChannels, samplesPerSec, _, _ ->
-                runCatching {
-                    source.pushAudio(
-                        audioSamples,
-                        nBytesPerSample * 8,
-                        samplesPerSec,
-                        nChannels,
-                        nSamples,
-                    )
-                }
-            },
-        )
-        runCatching { recorder.start() }
-            .onFailure { error ->
-                updateState { current ->
-                    current.copy(
-                        localAudioEnabled = false,
-                        errorMessage = error.message ?: "Не удалось включить микрофон",
-                        updatedAt = Clock.System.now(),
-                    )
-                }
-            }
-        audioRecorder = recorder
-    }
-
-    private fun startAudioPlayout() {
-        val player = AudioPlayer()
-        val playoutDevice = runCatching { MediaDevices.getDefaultAudioRenderDevice() }.getOrNull()
-        if (playoutDevice != null) {
-            player.setAudioDevice(playoutDevice)
-        }
-        player.setAudioSource(playbackBridge)
-        runCatching { player.start() }
-        audioPlayer = player
-    }
-
     private fun resolveRemotePeerIdForTrack(): String? {
         if (remotePeerIds.isEmpty()) {
             return null
@@ -516,12 +459,12 @@ private class DesktopWebRtcSession(
                 val parameters = sender.parameters ?: return@forEach
                 parameters.encodings?.forEach { encoding ->
                     if (track.kind == MediaStreamTrack.AUDIO_TRACK_KIND) {
-                        encoding.maxBitrate = 128_000
+                        encoding.maxBitrate = 96_000
                         encoding.minBitrate = 24_000
                     } else if (track.kind == MediaStreamTrack.VIDEO_TRACK_KIND) {
-                        encoding.maxBitrate = 2_000_000
-                        encoding.minBitrate = 300_000
-                        encoding.maxFramerate = 30.0
+                        encoding.maxBitrate = 1_200_000
+                        encoding.minBitrate = 250_000
+                        encoding.maxFramerate = 24.0
                     }
                 }
                 sender.setParameters(parameters)
@@ -669,86 +612,14 @@ private class DesktopWebRtcSession(
         if (capabilities.isEmpty()) {
             return null
         }
-        // Баланс качества и стабильности: не поднимаем захват выше 1280x720@30.
-        return capabilities.maxWithOrNull(
-            compareBy<VideoCaptureCapability> {
-                val widthScore = it.width.coerceAtMost(1280)
-                val heightScore = it.height.coerceAtMost(720)
-                widthScore * heightScore
-            }.thenBy { it.frameRate.coerceAtMost(30) },
-        )
-    }
-}
-
-private class DesktopAudioPlaybackBridge : AudioTrackSink, AudioSource {
-    private val lock = Any()
-    private val chunks = ArrayDeque<AudioChunk>()
-
-    override fun onData(data: ByteArray, bitsPerSample: Int, sampleRate: Int, channels: Int, frames: Int) {
-        synchronized(lock) {
-            chunks.addLast(
-                AudioChunk(
-                    bytes = data.copyOf(),
-                    bitsPerSample = bitsPerSample,
-                    sampleRate = sampleRate,
-                    channels = channels,
-                ),
-            )
-            while (chunks.size > 128) {
-                chunks.removeFirst()
-            }
+        // Для desktop держим сбалансированный профиль, чтобы снизить CPU без заметной потери качества.
+        val preferred = capabilities
+            .filter { it.width <= 960 && it.height <= 540 && it.frameRate <= 24 }
+            .maxWithOrNull(compareBy<VideoCaptureCapability> { it.width * it.height }.thenBy { it.frameRate })
+        if (preferred != null) {
+            return preferred
         }
-    }
-
-    override fun onPlaybackData(
-        audioSamples: ByteArray,
-        nSamples: Int,
-        nBytesPerSample: Int,
-        nChannels: Int,
-        samplesPerSec: Int,
-    ): Int {
-        val expectedBits = nBytesPerSample * 8
-        val expectedBytes = nSamples * nBytesPerSample * nChannels
-        var written = 0
-        synchronized(lock) {
-            while (written < expectedBytes && chunks.isNotEmpty()) {
-                val chunk = chunks.first()
-                if (chunk.bitsPerSample != expectedBits || chunk.sampleRate != samplesPerSec || chunk.channels != nChannels) {
-                    chunks.removeFirst()
-                    continue
-                }
-                val toCopy = min(expectedBytes - written, chunk.remaining())
-                chunk.copyTo(audioSamples, written, toCopy)
-                chunk.consume(toCopy)
-                written += toCopy
-                if (chunk.remaining() == 0) {
-                    chunks.removeFirst()
-                }
-            }
-        }
-        if (written < expectedBytes) {
-            audioSamples.fill(0, written, expectedBytes)
-        }
-        return nSamples
-    }
-}
-
-private class AudioChunk(
-    private val bytes: ByteArray,
-    val bitsPerSample: Int,
-    val sampleRate: Int,
-    val channels: Int,
-) {
-    private var offset: Int = 0
-
-    fun remaining(): Int = bytes.size - offset
-
-    fun copyTo(target: ByteArray, targetOffset: Int, count: Int) {
-        bytes.copyInto(target, destinationOffset = targetOffset, startIndex = offset, endIndex = offset + count)
-    }
-
-    fun consume(count: Int) {
-        offset += count
+        return capabilities.minWithOrNull(compareBy<VideoCaptureCapability> { it.width * it.height }.thenBy { it.frameRate })
     }
 }
 

@@ -83,5 +83,9 @@ actual class AppPlatformServices actual constructor(
         File(dialog.directory, selected).absolutePath
     }
 
+    actual suspend fun scanQr(): Result<String?> = Result.failure(
+        UnsupportedOperationException("Сканирование QR на desktop не поддерживается"),
+    )
+
     actual fun buildQrCode(text: String): QrCodeMatrix? = buildDesktopQrCode(text)
 }

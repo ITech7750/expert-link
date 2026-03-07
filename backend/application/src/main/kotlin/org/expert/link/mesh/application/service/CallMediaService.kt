@@ -310,7 +310,6 @@ class CallMediaService(
         webRtcSession: org.expert.link.mesh.domain.port.external.WebRtcSessionPort,
     ) {
         if (signalJobs.containsKey(session.callId)) return
-        val targets = targetsFromSession(session)
         val job = scope.launch {
             webRtcSession.signalEvents().collect { signalEvent ->
                 val payload = when (signalEvent.signalType) {
@@ -320,7 +319,7 @@ class CallMediaService(
                     CallSignalType.ICE_CANDIDATE -> signalEvent.iceCandidate?.let(::encodeIceCandidate)
                     else -> null
                 } ?: return@collect
-                targets.forEach { targetPeerId ->
+                resolveTargets(signalEvent.callId).forEach { targetPeerId ->
                     runCatching {
                         callSignalingService.sendSignal(
                             callId = signalEvent.callId,
@@ -390,8 +389,26 @@ class CallMediaService(
 
     private suspend fun targetsFromSession(session: CallSession): Set<String> {
         val localPeerId = runCatching { localProfileService.require().peerId }.getOrNull()
-        val base = session.targetPeerIds.ifEmpty { setOf(session.recipientPeerId) }
-        return if (localPeerId == null) base else base.filterNot { it == localPeerId }.toSet()
+        val base = buildSet {
+            addAll(session.targetPeerIds)
+            add(session.recipientPeerId)
+            add(session.initiatorPeerId)
+        }
+        if (localPeerId == null) {
+            return base
+        }
+        val filtered = base.filterNot { it == localPeerId }.toSet()
+        if (filtered.isNotEmpty()) {
+            return filtered
+        }
+        // Фолбек для входящего direct звонка, где targetPeerIds может содержать только локальный peer.
+        return if (session.callScope == CallScope.DIRECT) {
+            setOf(if (session.initiatorPeerId == localPeerId) session.recipientPeerId else session.initiatorPeerId)
+                .filterNot { it == localPeerId }
+                .toSet()
+        } else {
+            emptySet()
+        }
     }
 
     private fun encodeSessionDescription(description: SessionDescription): String {
