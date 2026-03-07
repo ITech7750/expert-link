@@ -20,15 +20,14 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/app-desktop" />
-            <option value="$PROJECT_DIR$/app-shared" />
             <option value="$PROJECT_DIR$/backend" />
-            <option value="$PROJECT_DIR$/backend/data" />
             <option value="$PROJECT_DIR$/backend/application" />
+            <option value="$PROJECT_DIR$/backend/data" />
             <option value="$PROJECT_DIR$/backend/infra" />
             <option value="$PROJECT_DIR$/backend/runtime" />
             <option value="$PROJECT_DIR$/bootstrap" />
             <option value="$PROJECT_DIR$/buildSrc" />
+            <option value="$PROJECT_DIR$/composeApp" />
             <option value="$PROJECT_DIR$/contract" />
             <option value="$PROJECT_DIR$/simulator" />
           </set>

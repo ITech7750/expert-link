@@ -11,9 +11,15 @@
 - `backend:runtime` — composition root, controller и lifecycle узла.
 - `bootstrap` — CLI host для JVM.
 - `simulator` — сценарии использования публичного backend API.
-- `app-shared` — shared presentation и Compose UI.
-- `app-desktop` — Desktop host.
-- `app-android` — Android host, если доступен SDK.
+- `composeApp` — единый KMP клиентский модуль (Compose Multiplatform):
+  - `commonMain` — общий UI, navigation и presentation;
+  - `jvmMain` — Desktop entry point и desktop platform services;
+  - `androidMain` — Android entry point и android platform services.
+
+`composeApp` использует `expect/actual` для платформенного слоя:
+- `commonMain`: `org.expert.link.app.shared.platform.AppPlatformServices` (`expect class`);
+- `jvmMain`: `AppPlatformServices.jvm.kt` (`actual`, Desktop integration);
+- `androidMain`: `AppPlatformServices.android.kt` (`actual`, Android integration).
 
 ## Backend-слои
 - `controller` — принимает транспортный запрос и передаёт его в lifecycle узла.
@@ -39,7 +45,7 @@
 - `backend:infra` зависит от `backend:data` и `backend:application`.
 - `backend:runtime` зависит от `backend:data`, `backend:application` и `backend:infra`.
 - `backend` зависит от `contract`, `backend:data`, `backend:application` и `backend:runtime`.
-- `simulator`, `app-shared`, `app-desktop` и `app-android` используют backend только через `backend` и `contract`.
+- `simulator` и `composeApp` используют backend только через `backend` и `contract`.
 
 ## Точки входа
 - публичный backend facade: `org.expert.link.mesh.backend.MeshBackend`
@@ -120,13 +126,13 @@ Desktop host:
 ```bash
 export JAVA_HOME=/home/itech/.jdks/corretto-21.0.9
 export PATH="$JAVA_HOME/bin:$PATH"
-./gradlew :app-desktop:run --args="--memory --name=desktop-demo"
+./gradlew :composeApp:run --args="--memory --name=desktop-demo"
 ```
 
 Два desktop-инстанса для сетевой проверки:
 ```bash
-./gradlew :app-desktop:run --args="--name=Алиса --http=18100 --discovery=19100" --no-daemon
-./gradlew :app-desktop:run --args="--name=Боб --http=18101 --discovery=19100" --no-daemon
+./gradlew :composeApp:run --args="--name=Алиса --http=18100 --discovery=19100" --no-daemon
+./gradlew :composeApp:run --args="--name=Боб --http=18101 --discovery=19100" --no-daemon
 ```
 
 ## Документы

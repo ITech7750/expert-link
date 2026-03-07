@@ -3,13 +3,13 @@
 ## Common модули
 - `contract`
 - `backend:data`
-- `app-shared`
+- `composeApp/commonMain`
 
 ## JVM-only модули
 - `backend:infra`
 - `backend:runtime`
 - `bootstrap`
-- `app-desktop`
+- `composeApp/jvmMain`
 
 ## Границы platform-specific кода
 ### backend:infra
@@ -26,8 +26,12 @@
 - controller-слой
 - lifecycle orchestration
 
-### app-desktop и app-android
-Содержат platform services для shared UI.
+### composeApp/androidMain и composeApp/jvmMain
+Содержат `actual`-реализации `AppPlatformServices`:
+- запуск backend-узла;
+- clipboard/share/file picker;
+- QR generation;
+- platform media-engine wiring.
 
 ## Platform-neutral части storage
 В `backend:data` расположены platform-neutral port-интерфейсы:

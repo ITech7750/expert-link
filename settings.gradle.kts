@@ -28,13 +28,7 @@ include(":backend:infra")
 include(":backend:runtime")
 include(":bootstrap")
 include(":simulator")
-include(":app-shared")
-include(":app-desktop")
-
-val androidSdkAvailable = System.getenv("ANDROID_SDK_ROOT") != null || System.getenv("ANDROID_HOME") != null
-if (androidSdkAvailable) {
-    include(":app-android")
-}
+include(":composeApp")
 
 project(":backend:data").projectDir = file("backend/data")
 project(":backend:application").projectDir = file("backend/application")

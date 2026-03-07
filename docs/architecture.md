@@ -8,7 +8,22 @@
 - `backend:infra` — реализации port (adapter/client/repository).
 - `backend:runtime` — bootstrap и controller.
 - `simulator` — сценарии использования только через `MeshNode`.
-- `app-shared` — presentation и Compose UI, работает только с `contract`.
+- `composeApp` — единый KMP client module:
+  - `commonMain` — Compose UI, navigation, presentation;
+  - `jvmMain` — Desktop entry point и desktop actual-сервисы;
+  - `androidMain` — Android entry point и android actual-сервисы.
+
+## ComposeApp структура
+- `composeApp/commonMain`
+  - `org.expert.link.app.shared.ui.*` — экранный UI и навигация;
+  - `org.expert.link.app.shared.presentation.*` — stores и состояние экранов;
+  - `org.expert.link.app.shared.platform.AppPlatformServices` — `expect`-контракт платформенных сервисов.
+- `composeApp/jvmMain`
+  - `org.expert.link.app.desktop.DesktopMainKt` — Desktop entry point;
+  - `org.expert.link.app.shared.platform.AppPlatformServices.jvm.kt` — `actual` desktop-реализация.
+- `composeApp/androidMain`
+  - `org.expert.link.app.android.MainActivity` — Android entry point;
+  - `org.expert.link.app.shared.platform.AppPlatformServices.android.kt` — `actual` Android-реализация.
 
 ## Слои backend
 - `controller` (`backend/runtime: org.expert.link.mesh.controller`) принимает пакет и передаёт в lifecycle.
@@ -72,7 +87,7 @@
 
 ## App/Simulator интеграция
 - `simulator` использует только `MeshBackend.launch` и `MeshNode`.
-- `app-shared` использует только `MeshNode` и contract-модели.
+- `composeApp/commonMain` использует только `MeshNode` и contract-модели.
 - Внутренние `backend:data/application/infra/runtime` классы в UI/Simulator напрямую не используются.
 
 ## Topology и Connectivity подсистема

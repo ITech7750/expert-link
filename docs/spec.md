@@ -100,7 +100,7 @@
 5. отправку reply;
 6. чтение истории и событий.
 
-### app-shared
+### composeApp/commonMain
 Добавлены:
 - группы и треды в presentation stores;
 - маршруты `Group` и `Thread`;
