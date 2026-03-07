@@ -880,7 +880,7 @@ data class CallsState(
     val groupTargets: String = "",
     val roomTitle: String = "",
     val offer: String = "demo-offer",
-    val signalPayload: String = "ok",
+    val signalPayload: String = "",
     val sessions: List<MeshCallSession> = emptyList(),
     val activeCalls: List<MeshCallSession> = emptyList(),
     val incomingCalls: List<MeshCallSession> = emptyList(),
@@ -1049,7 +1049,7 @@ class CallsStore(private val session: NodeSessionController) {
                 MeshAcceptCallCommand(
                     callId = call.callId,
                     recipientPeerId = replyPeer(call, it.profile.peerId),
-                    answer = state.value.signalPayload.takeIf { payload -> payload.isNotBlank() },
+                    answer = null,
                 ),
             )
         }
@@ -1075,7 +1075,7 @@ class CallsStore(private val session: NodeSessionController) {
                 MeshJoinCallCommand(
                     callId = call.callId,
                     recipientPeerId = replyPeer(call, it.profile.peerId),
-                    answer = state.value.signalPayload.takeIf { payload -> payload.isNotBlank() },
+                    answer = null,
                 ),
             )
         }
@@ -1098,13 +1098,14 @@ class CallsStore(private val session: NodeSessionController) {
     @Suppress("DEPRECATION")
     suspend fun sendQuality(call: MeshCallSession) {
         val recipient = if (call.recipientPeerId == session.state.value.profile?.peerId) call.initiatorPeerId else call.recipientPeerId
+        val payload = state.value.signalPayload.ifBlank { "ok" }
         session.withNode {
             it.sendCallSignal(
                 MeshCallSignalCommand(
                     callId = call.callId,
                     recipientPeerId = recipient,
                     signalType = MeshCallSignalType.QUALITY,
-                    payload = state.value.signalPayload,
+                    payload = payload,
                 ),
             )
         }

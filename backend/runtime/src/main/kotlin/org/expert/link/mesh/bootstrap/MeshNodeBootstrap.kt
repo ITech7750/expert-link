@@ -49,6 +49,7 @@ import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.security.RateLimitRule
 import org.expert.link.mesh.domain.model.security.RateLimitScope
 import org.expert.link.mesh.infrastructure.adapter.JvmMulticastSupportAdapter
+import org.expert.link.mesh.infrastructure.adapter.JvmNetworkEnvironmentAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryDedupCacheAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryEndpointCacheAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryReversePathRepositoryAdapter
@@ -81,6 +82,7 @@ import org.expert.link.mesh.infrastructure.adapter.InMemoryPacketTransportAdapte
 import org.expert.link.mesh.infrastructure.adapter.KtorPacketTransportAdapter
 import org.expert.link.mesh.infrastructure.adapter.NoopMediaEngineAdapter
 import org.expert.link.mesh.domain.port.external.MediaEnginePort
+import org.expert.link.mesh.domain.port.external.MulticastSupportPort
 
 /** Сборщик runtime узла.
  *
@@ -94,8 +96,9 @@ class MeshNodeBootstrap {
     suspend fun bootstrap(
         configuration: NodeConfiguration,
         mediaEnginePort: MediaEnginePort? = null,
+        multicastSupportPort: MulticastSupportPort? = null,
     ): MeshNodeRuntime {
-        return bootstrapComponents(configuration, mediaEnginePort).runtime
+        return bootstrapComponents(configuration, mediaEnginePort, multicastSupportPort).runtime
     }
 
     /**
@@ -104,6 +107,7 @@ class MeshNodeBootstrap {
     suspend fun bootstrapComponents(
         configuration: NodeConfiguration,
         mediaEnginePort: MediaEnginePort? = null,
+        multicastSupportPort: MulticastSupportPort? = null,
     ): MeshNodeComponents {
         val localProfileRepositoryPort = InMemoryLocalProfileRepositoryAdapter()
         val peerRepositoryPort = InMemoryPeerRepositoryAdapter()
@@ -134,9 +138,11 @@ class MeshNodeBootstrap {
         val keyMaterialFactory = KeyMaterialFactory(cryptoPort)
         val localProfileService = LocalProfileService(localProfileRepositoryPort, keyMaterialFactory)
         val localProfile = localProfileService.getOrCreate(configuration.displayName, configuration.capabilities)
+        val networkEnvironmentPort = JvmNetworkEnvironmentAdapter()
+        val announcedHost = resolveAnnouncedHost(configuration.bindHost, networkEnvironmentPort.localAddresses())
         val localEndpoint = PeerEndpoint(
             scheme = if (configuration.featureFlags.inMemoryTransport) "memory" else "http",
-            host = configuration.bindHost,
+            host = announcedHost,
             port = configuration.httpPort,
             announcedPeerId = localProfile.peerId,
             announcedAt = kotlinx.datetime.Clock.System.now(),
@@ -210,10 +216,15 @@ class MeshNodeBootstrap {
             topologyStateService,
         )
         val retrySchedulerService = RetrySchedulerService(deliveryTrackingService, configuration.retrySettings.pollIntervalMillis)
+        val effectiveMulticastSupportPort = multicastSupportPort ?: JvmMulticastSupportAdapter()
         val discoveryPort = when {
             !configuration.featureFlags.discoveryEnabled -> null
             configuration.featureFlags.inMemoryDiscovery -> InMemoryDiscoveryAdapter()
-            else -> UdpDiscoveryAdapter(configuration.discoveryPort, configuration.multicastGroup, JvmMulticastSupportAdapter())
+            else -> UdpDiscoveryAdapter(
+                configuration.discoveryPort,
+                configuration.multicastGroup,
+                effectiveMulticastSupportPort,
+            )
         }
         val discoveryOrchestrationService = discoveryPort?.let {
             DiscoveryOrchestrationService(
@@ -410,5 +421,42 @@ class MeshNodeBootstrap {
                 routeHandler.install(this)
             }
         }
+    }
+
+    private fun resolveAnnouncedHost(bindHost: String, localAddresses: List<String>): String {
+        if (bindHost !in AUTO_BIND_HOSTS) {
+            return bindHost
+        }
+        return localAddresses
+            .asSequence()
+            .filterNot(::isLoopbackAddress)
+            .sortedByDescending(::addressPriority)
+            .firstOrNull()
+            ?: bindHost
+    }
+
+    private fun isLoopbackAddress(address: String): Boolean {
+        return address == "127.0.0.1" || address == "0:0:0:0:0:0:0:1" || address == "::1"
+    }
+
+    private fun addressPriority(address: String): Int {
+        return when {
+            address.startsWith("192.168.") -> 4
+            address.startsWith("10.") -> 3
+            isPrivate172Address(address) -> 2
+            else -> 1
+        }
+    }
+
+    private fun isPrivate172Address(address: String): Boolean {
+        if (!address.startsWith("172.")) {
+            return false
+        }
+        val secondOctet = address.substringAfter("172.").substringBefore('.').toIntOrNull() ?: return false
+        return secondOctet in 16..31
+    }
+
+    private companion object {
+        private val AUTO_BIND_HOSTS = setOf("0.0.0.0", "127.0.0.1", "localhost", "::")
     }
 }

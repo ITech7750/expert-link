@@ -1,6 +1,7 @@
 package org.expert.link.app.android
 
 import android.content.Context
+import android.media.AudioManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -36,6 +37,7 @@ import org.expert.link.mesh.contract.model.MeshSessionDescription
 import org.expert.link.mesh.contract.model.MeshWebRtcSignalEvent
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
+import org.webrtc.CameraEnumerationAndroid
 import org.webrtc.Camera2Enumerator
 import org.webrtc.CameraVideoCapturer
 import org.webrtc.DefaultVideoDecoderFactory
@@ -127,10 +129,16 @@ private class AndroidWebRtcSession(
     private var videoSource: VideoSource? = null
     private var audioTrack: AudioTrack? = null
     private var videoTrack: VideoTrack? = null
+    private val remoteAudioTracks = mutableMapOf<String, AudioTrack>()
+    private val remoteVideoTracks = mutableMapOf<String, VideoTrack>()
     private var videoCapturer: VideoCapturer? = null
     private var cameraVideoCapturer: CameraVideoCapturer? = null
+    private var preferredCaptureFormat: CameraEnumerationAndroid.CaptureFormat? = null
     private var surfaceHelper: SurfaceTextureHelper? = null
     private var statsJob: Job? = null
+    private val audioManager: AudioManager? = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private var previousAudioMode: Int? = null
+    private var previousSpeakerphone: Boolean? = null
 
     private var lastStatsAtMs: Long = 0L
     private var lastBytesOut: Long = 0L
@@ -139,6 +147,7 @@ private class AndroidWebRtcSession(
     private val peerConnection: PeerConnection = createPeerConnection()
 
     init {
+        prepareAudioRouting()
         prepareLocalTracks()
         statsJob = scope.launch {
             while (isActive) {
@@ -264,12 +273,16 @@ private class AndroidWebRtcSession(
         runCatching { (videoCapturer as? CameraVideoCapturer)?.stopCapture() }
         runCatching { videoCapturer?.dispose() }
         runCatching { surfaceHelper?.dispose() }
+        remoteAudioTracks.clear()
+        remoteVideoTracks.clear()
+        AndroidVideoTrackRegistry.clearCall(callId)
         runCatching { videoTrack?.dispose() }
         runCatching { audioTrack?.dispose() }
         runCatching { videoSource?.dispose() }
         runCatching { audioSource?.dispose() }
         runCatching { peerConnection.close() }
         runCatching { peerConnection.dispose() }
+        restoreAudioRouting()
         updateState { current ->
             current.copy(
                 connectionState = MeshMediaConnectionState.CLOSED,
@@ -398,9 +411,26 @@ private class AndroidWebRtcSession(
 
         override fun onTrack(transceiver: RtpTransceiver?) {
             val track = transceiver?.receiver?.track() ?: return
+            val mappedPeerId = resolveRemotePeerIdForTrack()
             when (track.kind()) {
-                MediaStreamTrack.AUDIO_TRACK_KIND -> markRemoteTrack(audio = true, video = false)
-                MediaStreamTrack.VIDEO_TRACK_KIND -> markRemoteTrack(audio = false, video = true)
+                MediaStreamTrack.AUDIO_TRACK_KIND -> {
+                    val audio = track as? AudioTrack
+                    if (audio != null && mappedPeerId != null) {
+                        remoteAudioTracks[mappedPeerId] = audio
+                    }
+                    markRemoteTrack(audio = true, video = false)
+                }
+                MediaStreamTrack.VIDEO_TRACK_KIND -> {
+                    val video = track as? VideoTrack
+                    if (video != null) {
+                        val resolvedPeerId = mappedPeerId ?: remotePeerIds.firstOrNull()
+                        if (resolvedPeerId != null) {
+                            remoteVideoTracks[resolvedPeerId] = video
+                            AndroidVideoTrackRegistry.registerRemoteTrack(callId, resolvedPeerId, video)
+                        }
+                    }
+                    markRemoteTrack(audio = false, video = true)
+                }
             }
         }
 
@@ -422,9 +452,14 @@ private class AndroidWebRtcSession(
                 videoSource = factory.createVideoSource(createdCapturer.isScreencast)
                 surfaceHelper = SurfaceTextureHelper.create("capture-$callId", eglBase.eglBaseContext)
                 createdCapturer.initialize(surfaceHelper, context, videoSource?.capturerObserver)
-                runCatching { createdCapturer.startCapture(640, 480, 24) }
+                val captureFormat = preferredCaptureFormat
+                val width = captureFormat?.width ?: 1280
+                val height = captureFormat?.height ?: 720
+                val fps = captureFormat?.framerate?.max?.div(1000)?.coerceIn(15, 30) ?: 30
+                runCatching { createdCapturer.startCapture(width, height, fps) }
                 videoTrack = factory.createVideoTrack("video-$callId", videoSource)
                 videoTrack?.setEnabled(true)
+                videoTrack?.let { AndroidVideoTrackRegistry.registerLocalTrack(callId, it) }
             } else {
                 updateState { current ->
                     current.copy(
@@ -488,6 +523,7 @@ private class AndroidWebRtcSession(
             ?: deviceNames.firstOrNull { enumerator.isBackFacing(it) }
             ?: deviceNames.firstOrNull()
             ?: return null
+        preferredCaptureFormat = enumerator.preferredFormat(preferred)
         updateState { current ->
             current.copy(
                 cameraFacing = if (enumerator.isFrontFacing(preferred)) MeshCameraFacing.FRONT else MeshCameraFacing.BACK,
@@ -510,6 +546,28 @@ private class AndroidWebRtcSession(
             override fun onFirstFrameAvailable() = Unit
             override fun onCameraClosed() = Unit
         })
+    }
+
+    private fun Camera2Enumerator.preferredFormat(deviceName: String): CameraEnumerationAndroid.CaptureFormat? {
+        val formats = runCatching { getSupportedFormats(deviceName).orEmpty() }.getOrElse { emptyList() }
+        if (formats.isEmpty()) {
+            return null
+        }
+        return formats.maxWithOrNull(
+            compareBy<CameraEnumerationAndroid.CaptureFormat> {
+                val widthScore = it.width.coerceAtMost(1280)
+                val heightScore = it.height.coerceAtMost(720)
+                widthScore * heightScore
+            }.thenBy { it.framerate.max },
+        )
+    }
+
+    private fun resolveRemotePeerIdForTrack(): String? {
+        if (remotePeerIds.isEmpty()) {
+            return null
+        }
+        val mapped = remoteAudioTracks.keys + remoteVideoTracks.keys
+        return remotePeerIds.firstOrNull { it !in mapped } ?: remotePeerIds.first()
     }
 
     private fun markRemoteTrack(audio: Boolean, video: Boolean) {
@@ -589,6 +647,24 @@ private class AndroidWebRtcSession(
 
     private inline fun updateState(transform: (MeshCallMediaState) -> MeshCallMediaState) {
         stateFlow.value = transform(stateFlow.value)
+    }
+
+    private fun prepareAudioRouting() {
+        val manager = audioManager ?: return
+        previousAudioMode = manager.mode
+        previousSpeakerphone = manager.isSpeakerphoneOn
+        runCatching {
+            manager.mode = AudioManager.MODE_IN_COMMUNICATION
+            manager.isSpeakerphoneOn = true
+        }
+    }
+
+    private fun restoreAudioRouting() {
+        val manager = audioManager ?: return
+        runCatching {
+            previousAudioMode?.let { manager.mode = it }
+            previousSpeakerphone?.let { manager.isSpeakerphoneOn = it }
+        }
     }
 }
 

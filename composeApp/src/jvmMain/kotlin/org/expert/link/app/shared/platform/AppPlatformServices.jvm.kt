@@ -42,8 +42,10 @@ actual class AppPlatformServices actual constructor(
         return args.fold(base) { config, arg ->
             when {
                 arg.startsWith("--name=") -> config.copy(displayName = arg.substringAfter('='))
+                arg.startsWith("--bind=") -> config.copy(bindHost = arg.substringAfter('='))
                 arg.startsWith("--http=") -> arg.substringAfter('=').toIntOrNull()?.let { config.copy(httpPort = it) } ?: config
                 arg.startsWith("--discovery=") -> arg.substringAfter('=').toIntOrNull()?.let { config.copy(discoveryPort = it) } ?: config
+                arg.startsWith("--multicast=") -> config.copy(multicastGroup = arg.substringAfter('='))
                 arg == "--memory" -> config.copy(
                     featureFlags = config.featureFlags.copy(
                         inMemoryTransport = true,

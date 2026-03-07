@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import org.expert.link.app.android.AndroidMulticastSupport
 import org.expert.link.app.android.AndroidWebRtcMediaEngineAdapter
 import org.expert.link.app.android.buildAndroidQrCode
 import org.expert.link.mesh.backend.MeshBackend
@@ -37,9 +38,10 @@ actual class AppPlatformServices actual constructor(
         get() = AndroidPlatformContextHolder.require()
 
     private val mediaEngine by lazy { AndroidWebRtcMediaEngineAdapter(context) }
+    private val multicastSupport by lazy { AndroidMulticastSupport { context } }
 
     actual val platformName: String = "Android"
-    actual val transportHint: String = "Безопасный режим"
+    actual val transportHint: String = "Полная сеть"
     actual val capabilities: PlatformCapabilities = PlatformCapabilities(
         canCopyText = true,
         canShareText = true,
@@ -51,11 +53,15 @@ actual class AppPlatformServices actual constructor(
 
     actual fun defaultConfig(): MeshNodeConfig = createDefaultNodeConfig(
         displayNamePrefix = "android",
-        realTransport = false,
-        realDiscovery = false,
+        realTransport = true,
+        realDiscovery = true,
     )
 
-    actual suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(config, mediaEngine = mediaEngine)
+    actual suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(
+        configuration = config,
+        mediaEngine = mediaEngine,
+        multicastSupport = multicastSupport,
+    )
 
     actual suspend fun copyText(label: String, text: String): Result<Unit> = runCatching {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

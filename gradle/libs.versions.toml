@@ -13,6 +13,7 @@ androidxActivityCompose = "1.10.1"
 androidxCore = "1.15.0"
 zxing = "3.5.3"
 googleWebrtc = "137.7151.05"
+webrtcJava = "0.14.0"
 junit = "5.11.4"
 junitPlatform = "1.11.4"
 mockk = "1.13.13"
@@ -43,6 +44,7 @@ androidxActivityCompose = { module = "androidx.activity:activity-compose", versi
 androidxCoreKtx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
 zxingCore = { module = "com.google.zxing:core", version.ref = "zxing" }
 googleWebrtc = { module = "io.github.webrtc-sdk:android", version.ref = "googleWebrtc" }
+webrtcJava = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtcJava" }
 
 [bundles]
 kotlinxCore = ["kotlinxDatetime", "kotlinxSerializationJson", "kotlinxCoroutinesCore"]

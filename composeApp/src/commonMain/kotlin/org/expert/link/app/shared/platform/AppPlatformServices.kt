@@ -60,14 +60,15 @@ fun createDefaultNodeConfig(
     realTransport: Boolean,
     realDiscovery: Boolean,
 ): MeshNodeConfig {
+    val defaultDiscoveryPort = 19_100
+    val defaultMulticastGroup = "239.60.60.60"
     val httpPort = Random.nextInt(18100, 18999)
-    val discoveryPort = Random.nextInt(19100, 19999)
     return MeshNodeConfig(
         displayName = "$displayNamePrefix-${httpPort.toString().takeLast(3)}",
-        bindHost = "127.0.0.1",
+        bindHost = "0.0.0.0",
         httpPort = httpPort,
-        discoveryPort = discoveryPort,
-        multicastGroup = "239.10.10.10",
+        discoveryPort = defaultDiscoveryPort,
+        multicastGroup = defaultMulticastGroup,
         nodeMode = MeshNodeMode.LOCAL_ONLY,
         featureFlags = MeshFeatureFlags(
             discoveryEnabled = true,

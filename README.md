@@ -129,11 +129,17 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew :composeApp:run --args="--memory --name=desktop-demo"
 ```
 
-Два desktop-инстанса для сетевой проверки:
+Два desktop-инстанса для сетевой проверки (порт поиска общий и задаётся автоматически, вручную указываем только разные HTTP-порты):
 ```bash
-./gradlew :composeApp:run --args="--name=Алиса --http=18100 --discovery=19100" --no-daemon
-./gradlew :composeApp:run --args="--name=Боб --http=18101 --discovery=19100" --no-daemon
+./gradlew :composeApp:run --args="--name=Алиса --http=18100" --no-daemon
+./gradlew :composeApp:run --args="--name=Боб --http=18101" --no-daemon
 ```
+
+Android discovery:
+- В Android-клиенте по умолчанию включён real transport/discovery.
+- Для multicast discovery используются разрешения `ACCESS_WIFI_STATE` и `CHANGE_WIFI_MULTICAST_STATE`.
+- Узлы в одной локальной сети обнаруживаются автоматически (multicast + broadcast по активным интерфейсам).
+- Для связи между разными подсетями нужен внешний rendezvous/relay сервис (stub-клиент в проекте не заменяет внешний сервер).
 
 ## Документы
 - `docs/architecture.md` — структура модулей и слоёв.

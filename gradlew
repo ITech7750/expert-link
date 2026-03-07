@@ -132,8 +132,21 @@ Please set the JAVA_HOME variable in your environment to match the
 location of your Java installation."
     fi
 else
-    JAVACMD=java
-    which java >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
+    JAVACMD=
+    for CANDIDATE in \
+        "$HOME/.jdks/corretto-17.0.17/bin/java" \
+        "$HOME/.jdks/corretto-21.0.9/bin/java" \
+        "$HOME/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2/bin/java"
+    do
+        if [ -x "$CANDIDATE" ] ; then
+            JAVACMD=$CANDIDATE
+            JAVA_HOME=${CANDIDATE%/bin/java}
+            export JAVA_HOME
+            break
+        fi
+    done
+    [ -n "$JAVACMD" ] || JAVACMD=java
+    which "$JAVACMD" >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH.
 
 Please set the JAVA_HOME variable in your environment to match the
 location of your Java installation."

@@ -154,7 +154,7 @@ class NodeLifecycleService(
             helloJob = scope.launch {
                 while (true) {
                     discoveryPort.broadcastHello()
-                    delay(10_000)
+                    delay(DISCOVERY_HELLO_INTERVAL_MILLIS)
                 }
             }
         }
@@ -376,7 +376,13 @@ class NodeLifecycleService(
      * Starts an active discovery lookup for a specific peer when discovery is enabled.
      */
     suspend fun discoverPeer(peerId: String) {
-        discoveryPort?.lookupPeer(peerId)
+        val port = discoveryPort ?: return
+        repeat(DISCOVERY_LOOKUP_ATTEMPTS) { attempt ->
+            port.lookupPeer(peerId)
+            if (attempt < DISCOVERY_LOOKUP_ATTEMPTS - 1) {
+                delay(DISCOVERY_LOOKUP_RETRY_MILLIS)
+            }
+        }
     }
 
     /**
@@ -535,6 +541,12 @@ class NodeLifecycleService(
 
     /** Возвращает текущий relay mode узла. */
     suspend fun relayModeState(): RelayMode = topologyStateService.relayModeState()
+
+    private companion object {
+        private const val DISCOVERY_HELLO_INTERVAL_MILLIS = 5_000L
+        private const val DISCOVERY_LOOKUP_ATTEMPTS = 3
+        private const val DISCOVERY_LOOKUP_RETRY_MILLIS = 700L
+    }
 
     private suspend fun learnObservedNetworkState(envelope: PacketEnvelope) {
         val previousHopId = envelope.previousHopPeerId ?: envelope.sourcePeerId

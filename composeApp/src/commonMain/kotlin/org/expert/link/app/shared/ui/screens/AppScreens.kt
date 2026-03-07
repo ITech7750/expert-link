@@ -69,6 +69,7 @@ import org.expert.link.app.shared.ui.components.QrCodeCard
 import org.expert.link.app.shared.ui.components.ResponsiveColumns
 import org.expert.link.app.shared.ui.components.SectionCard
 import org.expert.link.app.shared.ui.components.StatusBanner
+import org.expert.link.app.shared.ui.components.CallVideoSurface
 import org.expert.link.app.shared.ui.components.asTone
 import org.expert.link.app.shared.ui.components.asUiText
 import org.expert.link.app.shared.ui.components.asUiTime
@@ -1385,6 +1386,34 @@ private fun CallRow(
                 InfoRow("RTT медиа", "${it.rttMs} мс")
                 InfoRow("Входящий поток", "${it.inboundBitrateKbps} кбит/с")
                 InfoRow("Исходящий поток", "${it.outboundBitrateKbps} кбит/с")
+            }
+            if (call.callType.name == "VIDEO") {
+                Text("Видео", fontWeight = FontWeight.Medium)
+                ResponsiveColumns(
+                    first = {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Вы", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            CallVideoSurface(
+                                callId = call.callId,
+                                peerId = null,
+                                local = true,
+                                modifier = Modifier.fillMaxWidth().height(180.dp),
+                            )
+                        }
+                    },
+                    second = {
+                        val remotePeerId = mediaState?.peers?.firstOrNull()?.peerId
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Собеседник", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            CallVideoSurface(
+                                callId = call.callId,
+                                peerId = remotePeerId,
+                                local = false,
+                                modifier = Modifier.fillMaxWidth().height(180.dp),
+                            )
+                        }
+                    },
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (call.status.name in setOf("RINGING", "INVITED", "NEW")) {

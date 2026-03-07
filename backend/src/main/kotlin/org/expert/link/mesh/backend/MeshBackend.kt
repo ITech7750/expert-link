@@ -12,6 +12,7 @@ import org.expert.link.mesh.contract.api.MeshEndCallCommand
 import org.expert.link.mesh.contract.api.MeshFileTransferCommand
 import org.expert.link.mesh.contract.api.MeshHangupCallCommand
 import org.expert.link.mesh.contract.api.MeshMediaEngine
+import org.expert.link.mesh.contract.api.MeshMulticastSupport
 import org.expert.link.mesh.contract.api.MeshNode
 import org.expert.link.mesh.contract.api.MeshAcceptCallCommand
 import org.expert.link.mesh.contract.api.MeshJoinCallCommand
@@ -74,10 +75,12 @@ object MeshBackend {
     suspend fun launch(
         configuration: MeshNodeConfig,
         mediaEngine: MeshMediaEngine? = null,
+        multicastSupport: MeshMulticastSupport? = null,
     ): MeshNode {
         val components = MeshNodeBootstrap().bootstrapComponents(
             configuration = configuration.toRuntime(),
             mediaEnginePort = mediaEngine?.toDomainPort(),
+            multicastSupportPort = multicastSupport?.toDomainPort(),
         )
         return DefaultMeshNode(components)
     }

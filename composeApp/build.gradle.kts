@@ -17,6 +17,19 @@ configurations.configureEach {
     }
 }
 
+val webrtcClassifier: String by lazy {
+    val osName = System.getProperty("os.name").lowercase()
+    val osArch = System.getProperty("os.arch").lowercase()
+    when {
+        osName.contains("win") -> "windows-x86_64"
+        osName.contains("mac") && (osArch.contains("aarch64") || osArch.contains("arm64")) -> "macos-aarch64"
+        osName.contains("mac") -> "macos-x86_64"
+        osArch.contains("aarch64") || osArch.contains("arm64") -> "linux-aarch64"
+        osArch.contains("arm") -> "linux-aarch32"
+        else -> "linux-x86_64"
+    }
+}
+
 kotlin {
     jvmToolchain(17)
 
@@ -48,6 +61,8 @@ kotlin {
                 implementation(project(":backend"))
                 implementation(libs.zxingCore)
                 implementation(compose.desktop.currentOs)
+                implementation(libs.webrtcJava)
+                runtimeOnly("dev.onvoid.webrtc:webrtc-java:${libs.versions.webrtcJava.get()}:$webrtcClassifier")
             }
         }
 
@@ -97,6 +112,18 @@ android {
 compose.desktop {
     application {
         mainClass = "org.expert.link.app.desktop.DesktopMainKt"
+        jvmArgs += listOf(
+            "--add-opens",
+            "webrtc.java/dev.onvoid.webrtc=ALL-UNNAMED",
+            "--add-opens",
+            "webrtc.java/dev.onvoid.webrtc.logging=ALL-UNNAMED",
+            "--add-opens",
+            "webrtc.java/dev.onvoid.webrtc.media=ALL-UNNAMED",
+            "--add-opens",
+            "webrtc.java/dev.onvoid.webrtc.media.audio=ALL-UNNAMED",
+            "--add-opens",
+            "webrtc.java/dev.onvoid.webrtc.media.video=ALL-UNNAMED",
+        )
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "expert-link"

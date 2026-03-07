@@ -18,8 +18,11 @@ import org.expert.link.mesh.domain.port.external.DiscoveryPort
 import org.expert.link.mesh.domain.port.external.MulticastSupportPort
 import java.net.DatagramPacket
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.MulticastSocket
+import java.net.NetworkInterface
 import java.net.SocketException
+import java.util.Collections
 
 /** UDP discovery-адаптер с fallback на broadcast. */
 class UdpDiscoveryAdapter(
@@ -36,6 +39,7 @@ class UdpDiscoveryAdapter(
     private var multicastEnabled: Boolean = true
     private lateinit var localPeerIdentity: PeerIdentity
     private lateinit var localEndpoint: PeerEndpoint
+    private val relayedFrameCache = linkedMapOf<String, Long>()
 
     override val events: Flow<DiscoveryFrame> = sharedFlow
 
@@ -43,11 +47,17 @@ class UdpDiscoveryAdapter(
         this.localPeerIdentity = localPeerIdentity
         this.localEndpoint = endpoint
         multicastSupportPort.prepareForMulticast()
-        val multicastSocket = MulticastSocket(discoveryPort)
+        val multicastSocket = MulticastSocket(null)
+        multicastSocket.reuseAddress = true
+        multicastSocket.bind(InetSocketAddress(discoveryPort))
         multicastSocket.broadcast = true
         multicastEnabled = multicastSupportPort.isMulticastSupported()
         if (multicastEnabled) {
-            multicastSocket.joinGroup(InetAddress.getByName(multicastGroup))
+            val multicastAddress = InetAddress.getByName(multicastGroup)
+            val joinedAny = joinMulticastInterfaces(multicastSocket, multicastAddress)
+            if (!joinedAny) {
+                multicastSocket.joinGroup(multicastAddress)
+            }
         }
         socket = multicastSocket
         receiveJob = scope.launch {
@@ -58,6 +68,7 @@ class UdpDiscoveryAdapter(
                     multicastSocket.receive(packet)
                     val frame = json.decodeFromString(DiscoveryFrame.serializer(), packet.data.copyOf(packet.length).toString(Charsets.UTF_8))
                     sharedFlow.emit(frame)
+                    relayFrameIfNeeded(multicastSocket, frame, packet.address)
                 } catch (_: SocketException) {
                     break
                 } catch (error: Exception) {
@@ -70,6 +81,7 @@ class UdpDiscoveryAdapter(
     override suspend fun stop() {
         receiveJob?.cancel()
         socket?.close()
+        multicastSupportPort.releaseMulticast()
         scope.cancel()
     }
 
@@ -103,8 +115,134 @@ class UdpDiscoveryAdapter(
             expiresAt = kotlinx.datetime.Clock.System.now().let { kotlinx.datetime.Instant.fromEpochMilliseconds(it.toEpochMilliseconds() + 60_000) },
         )
         val payload = json.encodeToString(DiscoveryFrame.serializer(), frame).toByteArray(Charsets.UTF_8)
-        val destination = if (multicastEnabled) InetAddress.getByName(multicastGroup) else InetAddress.getByName("255.255.255.255")
-        val packet = DatagramPacket(payload, payload.size, destination, discoveryPort)
-        socket?.send(packet)
+        destinationAddresses().forEach { destination ->
+            destinationPorts().forEach { targetPort ->
+                val packet = DatagramPacket(payload, payload.size, destination, targetPort)
+                runCatching { socket?.send(packet) }
+                    .onFailure { error ->
+                        logger.debug(error) {
+                            "Failed to send discovery frame to ${destination.hostAddress}:$targetPort"
+                        }
+                    }
+            }
+        }
+    }
+
+    private fun joinMulticastInterfaces(socket: MulticastSocket, group: InetAddress): Boolean {
+        var joined = false
+        val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            .filter { networkInterface ->
+                runCatching {
+                    networkInterface.isUp && networkInterface.supportsMulticast()
+                }.getOrDefault(false)
+            }
+        interfaces.forEach { networkInterface ->
+            runCatching {
+                socket.joinGroup(InetSocketAddress(group, discoveryPort), networkInterface)
+                joined = true
+            }.onFailure { error ->
+                logger.debug(error) { "Failed to join multicast on ${networkInterface.displayName}" }
+            }
+        }
+        return joined
+    }
+
+    private fun destinationAddresses(): List<InetAddress> {
+        val addresses = linkedSetOf<InetAddress>()
+        if (multicastEnabled) {
+            runCatching { InetAddress.getByName(multicastGroup) }.onSuccess { addresses.add(it) }
+        }
+        collectInterfaceBroadcasts().forEach { addresses.add(it) }
+        if (addresses.isEmpty()) {
+            addresses.add(InetAddress.getByName("255.255.255.255"))
+        }
+        return addresses.toList()
+    }
+
+    private fun destinationPorts(): List<Int> {
+        val ports = linkedSetOf<Int>()
+        for (delta in -2..2) {
+            val candidate = discoveryPort + delta
+            if (candidate in 1..65_535) {
+                ports.add(candidate)
+            }
+        }
+        // Фиксированные fallback-порты для автообнаружения между узлами с разной конфигурацией.
+        listOf(19_100, 19_101, 19_102).forEach { ports.add(it) }
+        return ports.toList()
+    }
+
+    private fun collectInterfaceBroadcasts(): List<InetAddress> {
+        return runCatching {
+            Collections.list(NetworkInterface.getNetworkInterfaces())
+                .asSequence()
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { networkInterface -> networkInterface.interfaceAddresses.asSequence() }
+                .mapNotNull { it.broadcast }
+                .toList()
+        }.getOrDefault(emptyList())
+    }
+
+    private fun relayFrameIfNeeded(socket: MulticastSocket, frame: DiscoveryFrame, sourceAddress: InetAddress) {
+        if (frame.sourcePeerId == localPeerIdentity.peerId) {
+            return
+        }
+        if (!isBridgeNode()) {
+            return
+        }
+        if (!markRelayed(frame)) {
+            return
+        }
+        val payload = json.encodeToString(DiscoveryFrame.serializer(), frame).toByteArray(Charsets.UTF_8)
+        destinationAddresses()
+            .filterNot { it.hostAddress == sourceAddress.hostAddress }
+            .forEach { destination ->
+                destinationPorts().forEach { targetPort ->
+                    runCatching {
+                        socket.send(DatagramPacket(payload, payload.size, destination, targetPort))
+                    }.onFailure { error ->
+                        logger.debug(error) {
+                            "Failed to relay discovery frame to ${destination.hostAddress}:$targetPort"
+                        }
+                    }
+                }
+            }
+    }
+
+    private fun isBridgeNode(): Boolean = collectInterfaceBroadcasts().size > 1
+
+    private fun markRelayed(frame: DiscoveryFrame): Boolean {
+        val nowMs = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        val frameKey = buildString {
+            append(frame.type.name)
+            append('|')
+            append(frame.sourcePeerId)
+            append('|')
+            append(frame.targetPeerId.orEmpty())
+            append('|')
+            append(frame.createdAt.toEpochMilliseconds())
+            append('|')
+            append(frame.endpoint.host)
+            append(':')
+            append(frame.endpoint.port)
+        }
+        synchronized(relayedFrameCache) {
+            val iterator = relayedFrameCache.entries.iterator()
+            while (iterator.hasNext()) {
+                val entry = iterator.next()
+                if (nowMs - entry.value > RELAY_FRAME_TTL_MS) {
+                    iterator.remove()
+                }
+            }
+            if (relayedFrameCache.containsKey(frameKey)) {
+                return false
+            }
+            relayedFrameCache[frameKey] = nowMs
+            return true
+        }
+    }
+
+    private companion object {
+        private const val RELAY_FRAME_TTL_MS = 30_000L
     }
 }
