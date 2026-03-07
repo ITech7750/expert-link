@@ -13,14 +13,17 @@
 - `org.expert.link.mesh.contract.api.MeshNode`
 
 ## Модули
-- `contract` — стабильные публичные модели и API для мобильной интеграции
+- `contract` — KMP-ready публичные модели и API для мобильной интеграции
 - `backend` — библиотечный facade поверх внутреннего runtime
-- `backend:data` — внутренние доменные модели и порты
+- `backend:data` — KMP-ready доменные модели, storage contracts и порты
 - `backend:engine` — внутренняя application-логика
 - `backend:infra` — внутренние адаптеры и репозитории
 - `backend:runtime` — внутренний composition root узла
 - `bootstrap` — CLI host
 - `simulator` — mobile-style demo сценарии только через публичный API
+
+`contract` и `backend:data` уже собираются как Kotlin Multiplatform модули с `commonMain`.
+JVM-only код изолирован в `backend:infra`, `backend:runtime` и `bootstrap`.
 
 ## Быстрый старт
 Сборка:
@@ -83,4 +86,5 @@ node.stop()
 
 Подробные примеры:
 - `docs/mobile-usage.md`
+- `docs/kmp-readiness.md`
 - `simulator/src/main/kotlin/org/expert/link/mesh/simulator/scenario`
