@@ -304,11 +304,10 @@ sequenceDiagram
 
 Версия №2
 
-![photo_2026-03-07_20-51-30 (2).jpg](../../Downloads/photo_2026-03-07_20-51-30%20%282%29.jpg)
-![photo_2026-03-07_20-51-29.jpg](../../Downloads/photo_2026-03-07_20-51-29.jpg)
-![photo_2026-03-07_20-51-30.jpg](../../Downloads/photo_2026-03-07_20-51-30.jpg)
-![photo_2026-03-07_20-54-29.jpg](../../Downloads/photo_2026-03-07_20-54-29.jpg)
-
+![img_6.jpg](img_6.jpg)
+![img_7.jpg](img_7.jpg)
+![img_8.jpg](img_8.jpg)
+![img_9.jpg](img_9.jpg)
 ## Ограничения текущей реализации
 - Все репозитории в runtime — in‑memory; состояние теряется при перезапуске.
 - `RendezvousRelayClient` — in‑memory stub, внешнего relay‑сервера нет.
