@@ -12,7 +12,6 @@ import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.security.BlockedPeer
 import org.expert.link.mesh.domain.model.security.CryptoMaterialRef
 import org.expert.link.mesh.domain.model.security.CryptoStorageType
-import java.net.URI
 
 /** Маппер локального профиля. */
 object LocalProfileEntityMapper {
@@ -84,15 +83,35 @@ object PeerEntityMapper {
     )
 
     private fun parseEndpoint(url: String): PeerEndpoint {
-        val uri = URI(url)
+        val schemeDelimiter = url.indexOf("://")
+        require(schemeDelimiter > 0) { "Invalid endpoint url: $url" }
+        val scheme = url.substring(0, schemeDelimiter)
+        val remainder = url.substring(schemeDelimiter + 3)
+        val pathStart = remainder.indexOf('/').takeIf { it >= 0 } ?: remainder.length
+        val authority = remainder.substring(0, pathStart)
+        val path = remainder.substring(pathStart).ifBlank { "/api/v1/packets" }
+        val hostAndPort = if (authority.startsWith("[")) {
+            val closingBracket = authority.indexOf(']')
+            require(closingBracket > 0 && closingBracket + 2 <= authority.length) { "Invalid endpoint authority: $authority" }
+            authority.substring(1, closingBracket) to authority.substring(closingBracket + 2)
+        } else {
+            val separator = authority.lastIndexOf(':')
+            require(separator > 0) { "Invalid endpoint authority: $authority" }
+            authority.substring(0, separator) to authority.substring(separator + 1)
+        }
         return PeerEndpoint(
-            scheme = uri.scheme ?: "http",
-            host = uri.host,
-            port = if (uri.port > 0) uri.port else 80,
-            path = uri.path.ifBlank { "/api/v1/packets" },
+            scheme = scheme.ifBlank { "http" },
+            host = hostAndPort.first,
+            port = hostAndPort.second.toIntOrNull() ?: defaultPort(scheme),
+            path = path,
             announcedAt = Instant.parse("1970-01-01T00:00:00Z"),
             expiresAt = null,
         )
+    }
+
+    private fun defaultPort(scheme: String): Int = when (scheme.lowercase()) {
+        "https" -> 443
+        else -> 80
     }
 }
 

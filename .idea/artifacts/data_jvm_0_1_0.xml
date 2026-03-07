@@ -1,0 +1,6 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="data-jvm-0.1.0">
+    <output-path>$PROJECT_DIR$/backend/data/build/libs</output-path>
+    <root id="archive" name="data-jvm-0.1.0.jar" />
+  </artifact>
+</component>

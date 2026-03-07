@@ -88,6 +88,9 @@ val receipts = node.messageReceipts()
 - `MeshMessageReceipt`
 
 ## Передача файлов
+`MeshFileTransferCommand.path` считается платформенным file handle.
+На JVM это обычный путь, на мобильной платформе позже это может быть URI, sandbox path или иной локальный идентификатор файла.
+
 Вызовы:
 ```kotlin
 val transfer = node.sendFile(

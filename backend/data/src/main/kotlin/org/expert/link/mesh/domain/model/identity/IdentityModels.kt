@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.security.CryptoMaterialRef
-import java.util.Base64
+import org.expert.link.mesh.domain.support.decodeBase64Url
+import org.expert.link.mesh.domain.support.encodeBase64Url
 
 /** Состояния доверия. */
 @Serializable
@@ -66,7 +67,7 @@ data class PairingInvite(
     /** Кодирует invite в URL-safe строку. */
     fun toEncodedString(): String {
         val json = Json.encodeToString(PairingInvite.serializer(), this)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(json.toByteArray(Charsets.UTF_8))
+        return encodeBase64Url(json.encodeToByteArray())
     }
 
     /** Возвращает `true`, если invite истёк. */
@@ -75,7 +76,7 @@ data class PairingInvite(
     companion object {
         /** Декодирует ранее сериализованный invite. */
         fun fromEncodedString(encoded: String): PairingInvite {
-            val decoded = Base64.getUrlDecoder().decode(encoded).toString(Charsets.UTF_8)
+            val decoded = decodeBase64Url(encoded).decodeToString()
             return Json.decodeFromString(PairingInvite.serializer(), decoded)
         }
     }

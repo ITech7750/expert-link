@@ -134,7 +134,11 @@ data class MeshChatCommand(
     val conversationId: String? = null,
 )
 
-/** Команда на отправку файла. */
+/** Команда на отправку файла.
+ *
+ * `path` считается платформенным file handle. На JVM это может быть обычный путь,
+ * на Android или iOS — URI, sandbox path или иной локальный идентификатор ресурса.
+ */
 data class MeshFileTransferCommand(
     val targetPeerId: String,
     val path: String,

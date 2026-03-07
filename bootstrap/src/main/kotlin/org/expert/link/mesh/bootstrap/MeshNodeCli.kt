@@ -8,11 +8,14 @@ import org.expert.link.mesh.contract.config.MeshNodeConfig
 import java.io.File
 
 /** Тонкая CLI-обёртка над публичным API backend-модуля. */
+private val cliJson = Json { ignoreUnknownKeys = true }
+
+/** Точка входа CLI host-процесса. */
 fun main(args: Array<String>): Unit = runBlocking {
     require(args.isNotEmpty()) { "Usage: bootstrap <config.json>" }
     val configFile = File(args.first())
     require(configFile.exists()) { "Configuration file does not exist: ${configFile.absolutePath}" }
-    val configuration = Json { ignoreUnknownKeys = true }.decodeFromString(MeshNodeConfig.serializer(), configFile.readText())
+    val configuration = cliJson.decodeFromString(MeshNodeConfig.serializer(), configFile.readText())
     MeshBackend.launch(configuration)
     awaitCancellation()
 }

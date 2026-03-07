@@ -6,7 +6,7 @@ import org.expert.link.mesh.domain.model.messaging.Conversation
 import org.expert.link.mesh.domain.model.messaging.MessageDeliveryStatus
 import org.expert.link.mesh.domain.model.network.PendingAckRecord
 
-/** Порт хранения диалогов. */
+/** Порт постоянного хранения диалогов. */
 interface ConversationRepositoryPort {
     /** Сохраняет диалог. */
     suspend fun save(conversation: Conversation): Conversation
@@ -21,7 +21,7 @@ interface ConversationRepositoryPort {
     suspend fun list(): List<Conversation>
 }
 
-/** Порт хранения сообщений. */
+/** Порт постоянного хранения сообщений. */
 interface MessageRepositoryPort {
     /** Сохраняет сообщение. */
     suspend fun save(message: ChatMessage): ChatMessage
@@ -36,7 +36,7 @@ interface MessageRepositoryPort {
     suspend fun updateStatus(messageId: String, status: MessageDeliveryStatus): ChatMessage?
 }
 
-/** Порт очереди исходящих сообщений. */
+/** Порт runtime-очереди исходящих сообщений. */
 interface OutgoingQueuePort {
     /** Добавляет пакет в очередь. */
     suspend fun enqueue(record: PendingAckRecord)
@@ -48,7 +48,7 @@ interface OutgoingQueuePort {
     suspend fun list(): List<PendingAckRecord>
 }
 
-/** Порт хранения пакетов, ожидающих ACK. */
+/** Порт runtime-хранилища пакетов, ожидающих ACK. */
 interface PendingAckRepositoryPort {
     /** Сохраняет запись ожидания ACK. */
     suspend fun save(record: PendingAckRecord): PendingAckRecord

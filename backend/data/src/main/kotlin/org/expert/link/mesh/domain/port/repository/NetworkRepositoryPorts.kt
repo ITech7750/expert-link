@@ -5,7 +5,7 @@ import org.expert.link.mesh.domain.model.network.PeerEndpointCandidate
 import org.expert.link.mesh.domain.model.network.ReversePathEntry
 import org.expert.link.mesh.domain.model.network.RouteEntry
 
-/** Порт кэша endpoint-кандидатов. */
+/** Порт runtime-кэша endpoint-кандидатов. */
 interface EndpointCachePort {
     /** Добавляет или заменяет endpoint-кандидат. */
     suspend fun put(candidate: PeerEndpointCandidate)
@@ -23,7 +23,7 @@ interface EndpointCachePort {
     suspend fun removePeer(peerId: String)
 }
 
-/** Порт хранения маршрутов. */
+/** Порт runtime-хранилища маршрутов. */
 interface RouteRepositoryPort {
     /** Сохраняет маршрут. */
     suspend fun save(routeEntry: RouteEntry): RouteEntry
@@ -41,7 +41,7 @@ interface RouteRepositoryPort {
     suspend fun evictExpired(now: Instant): Int
 }
 
-/** Порт хранения обратного пути для ACK. */
+/** Порт runtime-хранилища обратного пути для ACK. */
 interface ReversePathRepositoryPort {
     /** Сохраняет reverse path. */
     suspend fun save(entry: ReversePathEntry): ReversePathEntry
@@ -56,7 +56,7 @@ interface ReversePathRepositoryPort {
     suspend fun evictExpired(now: Instant): Int
 }
 
-/** Порт dedup-кэша. */
+/** Порт runtime dedup-кэша. */
 interface DedupCachePort {
     /** Помечает пакет как увиденный и возвращает `true`, если он новый. */
     suspend fun markSeenIfNew(packetId: String, expiresAt: Instant): Boolean

@@ -19,10 +19,11 @@ import org.expert.link.mesh.domain.model.network.FileOffer
 import org.expert.link.mesh.domain.model.network.FileResumeRequestPayload
 import org.expert.link.mesh.domain.model.network.PacketType
 import org.expert.link.mesh.domain.model.network.RouteMode
+import org.expert.link.mesh.domain.port.external.CryptoPort
 import org.expert.link.mesh.domain.port.repository.FileChunkStoragePort
 import org.expert.link.mesh.domain.port.repository.FileTransferRepositoryPort
-import java.io.File
-import java.util.Base64
+import org.expert.link.mesh.domain.support.decodeBase64
+import org.expert.link.mesh.domain.support.encodeBase64
 import kotlin.math.ceil
 
 /**
@@ -31,6 +32,7 @@ import kotlin.math.ceil
  * Отвечает за offer/accept, отправку чанков, resume и проверку хеша.
  */
 class FileTransferService(
+    private val cryptoPort: CryptoPort,
     private val localProfileService: LocalProfileService,
     private val peerTrustVerificationService: PeerTrustVerificationService,
     private val messageEncryptionService: MessageEncryptionService,
@@ -39,7 +41,6 @@ class FileTransferService(
     private val deliveryTrackingService: DeliveryTrackingService,
     private val fileTransferRepositoryPort: FileTransferRepositoryPort,
     private val fileChunkStoragePort: FileChunkStoragePort,
-    private val fileHashService: FileHashService,
     private val fileResumeService: FileResumeService,
     private val eventLogService: EventLogService,
     private val nodeMetricsService: NodeMetricsService,
@@ -52,14 +53,15 @@ class FileTransferService(
         val trustedPeer = requireNotNull(peerTrustVerificationService.requireTrusted(targetPeerId)) {
             "Peer $targetPeerId is not trusted"
         }
-        val file = File(sourcePath)
+        val file = fileChunkStoragePort.describe(sourcePath)
         val descriptor = FileDescriptor(
             fileId = newId("file"),
-            fileName = file.name,
-            sizeBytes = file.length(),
-            sha256 = fileHashService.computeSha256(sourcePath),
+            fileName = file.fileName,
+            sizeBytes = file.sizeBytes,
+            sha256 = fileChunkStoragePort.computeSha256(sourcePath),
+            contentType = file.contentType,
         )
-        val totalChunks = ceil(file.length().toDouble() / defaultChunkSizeBytes.toDouble()).toInt().coerceAtLeast(1)
+        val totalChunks = ceil(file.sizeBytes.toDouble() / defaultChunkSizeBytes.toDouble()).toInt().coerceAtLeast(1)
         val session = FileTransferSession(
             transferId = newId("transfer"),
             conversationId = conversationId,
@@ -123,7 +125,11 @@ class FileTransferService(
             status = FileTransferStatus.ACCEPTED,
             chunkSizeBytes = offer.chunkSizeBytes,
             totalChunks = offer.totalChunks,
-            localPath = "$downloadDirectory/${offer.transferId}-${offer.descriptor.fileName}",
+            localPath = fileChunkStoragePort.resolveTargetPath(
+                baseDirectory = downloadDirectory,
+                transferId = offer.transferId,
+                fileName = offer.descriptor.fileName,
+            ),
             createdAt = now(),
             updatedAt = now(),
         )
@@ -157,7 +163,7 @@ class FileTransferService(
      */
     suspend fun handleFileChunk(payload: FileChunkPayload): FileTransferSession? {
         val session = fileTransferRepositoryPort.findByTransferId(payload.chunk.transferId) ?: return null
-        val data = Base64.getDecoder().decode(payload.chunk.dataBase64)
+        val data = decodeBase64(payload.chunk.dataBase64)
         fileChunkStoragePort.writeChunk(payload.chunk.transferId, payload.chunk.chunkIndex, data)
         val updated = fileTransferRepositoryPort.save(
             session.copy(
@@ -175,7 +181,7 @@ class FileTransferService(
         )
         if (updated.receivedChunks.size == updated.totalChunks) {
             val assembledPath = fileChunkStoragePort.assembleFile(updated.transferId, requireNotNull(updated.localPath), updated.totalChunks)
-            val verified = fileHashService.verify(assembledPath, updated.descriptor.sha256)
+            val verified = fileChunkStoragePort.computeSha256(assembledPath) == updated.descriptor.sha256
             val finalStatus = if (verified) FileTransferStatus.COMPLETED else FileTransferStatus.FAILED
             val finalSession = fileTransferRepositoryPort.save(updated.copy(status = finalStatus, updatedAt = now()))
             if (verified) {
@@ -285,8 +291,8 @@ class FileTransferService(
             transferId = session.transferId,
             chunkIndex = chunkIndex,
             totalChunks = session.totalChunks,
-            dataBase64 = Base64.getEncoder().encodeToString(data),
-            sha256 = fileHashService.computeSha256(data),
+            dataBase64 = encodeBase64(data),
+            sha256 = cryptoPort.sha256Hex(data),
             createdAt = now(),
         )
         val encrypted = messageEncryptionService.encryptPayload(trustedPeer.peerIdentity.publicKey, FileChunkPayload(chunk))

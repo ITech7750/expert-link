@@ -19,7 +19,6 @@ import org.expert.link.mesh.domain.model.network.PacketType
 import org.expert.link.mesh.domain.model.network.RouteMode
 import org.expert.link.mesh.domain.port.repository.ConversationRepositoryPort
 import org.expert.link.mesh.domain.port.repository.MessageRepositoryPort
-import java.util.ArrayDeque
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
