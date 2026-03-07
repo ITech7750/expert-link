@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.expert.link.mesh.application.service.BlockListService
 import org.expert.link.mesh.application.service.CallSignalingService
+import org.expert.link.mesh.application.service.CallMediaService
 import org.expert.link.mesh.application.service.ChatMessagingService
 import org.expert.link.mesh.application.service.DeduplicationService
 import org.expert.link.mesh.application.service.DeliveryTrackingService
@@ -28,6 +29,7 @@ import org.expert.link.mesh.application.service.RelayService
 import org.expert.link.mesh.application.service.RetrySchedulerService
 import org.expert.link.mesh.application.service.RoutingService
 import org.expert.link.mesh.application.service.SecurityIncidentService
+import org.expert.link.mesh.application.service.TopologyStateService
 import org.expert.link.mesh.application.support.newId
 import org.expert.link.mesh.application.support.now
 import org.expert.link.mesh.application.support.plusSeconds
@@ -35,6 +37,13 @@ import org.expert.link.mesh.bootstrap.config.NodeConfiguration
 import org.expert.link.mesh.domain.model.identity.LocalProfile
 import org.expert.link.mesh.domain.model.identity.PeerIdentity
 import org.expert.link.mesh.domain.model.messaging.OutgoingMessage
+import org.expert.link.mesh.domain.model.call.CallEvent
+import org.expert.link.mesh.domain.model.call.CallMediaState
+import org.expert.link.mesh.domain.model.call.CallMediaStats
+import org.expert.link.mesh.domain.model.call.CallParticipant
+import org.expert.link.mesh.domain.model.call.CallSession
+import org.expert.link.mesh.domain.model.call.CallSignal
+import org.expert.link.mesh.domain.model.call.CallType
 import org.expert.link.mesh.domain.model.network.CallInvite
 import org.expert.link.mesh.domain.model.network.CallHangup
 import org.expert.link.mesh.domain.model.network.CallSignalPayload
@@ -52,9 +61,14 @@ import org.expert.link.mesh.domain.model.network.PacketType
 import org.expert.link.mesh.domain.model.network.PairAccept
 import org.expert.link.mesh.domain.model.network.PairRequest
 import org.expert.link.mesh.domain.model.network.PeerAnnounce
+import org.expert.link.mesh.domain.model.network.ConnectivityStrategy
+import org.expert.link.mesh.domain.model.network.NetworkRoleState
+import org.expert.link.mesh.domain.model.network.NetworkTopologyState
 import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.network.PeerEndpointCandidate
 import org.expert.link.mesh.domain.model.network.PeerLookup
+import org.expert.link.mesh.domain.model.network.RelayMode
+import org.expert.link.mesh.domain.model.network.RouteHealth
 import org.expert.link.mesh.domain.model.network.RouteMode
 import org.expert.link.mesh.domain.model.network.TransportDeliveryResult
 import org.expert.link.mesh.domain.model.network.SystemEventPayload
@@ -84,6 +98,7 @@ class NodeLifecycleService(
     private val chatMessagingService: ChatMessagingService,
     private val fileTransferService: FileTransferService,
     private val callSignalingService: CallSignalingService,
+    private val callMediaService: CallMediaService,
     private val discoveryPort: DiscoveryPort?,
     private val discoveryOrchestrationService: DiscoveryOrchestrationService?,
     private val reversePathRepositoryPort: ReversePathRepositoryPort,
@@ -102,6 +117,7 @@ class NodeLifecycleService(
     private val nodeMetricsService: NodeMetricsService,
     private val securityIncidentService: SecurityIncidentService,
     private val rendezvousRegistryPort: RendezvousRegistryPort? = null,
+    private val topologyStateService: TopologyStateService,
     private val onStart: suspend () -> Unit = {},
     private val onStop: suspend () -> Unit = {},
 ) {
@@ -115,6 +131,15 @@ class NodeLifecycleService(
     suspend fun start() {
         onStart()
         retrySchedulerService.start(scope)
+        topologyStateService.initialize(
+            localPeerId = localProfile.peerId,
+            endpoint = localEndpoint,
+            relayMode = when {
+                configuration.relayClientSettings?.forceRelayLookup == true -> RelayMode.FORCED
+                configuration.featureFlags.relayEnabled || configuration.relayClientSettings?.enabled == true -> RelayMode.STANDBY
+                else -> RelayMode.DISABLED
+            },
+        )
         if (configuration.featureFlags.discoveryEnabled && discoveryPort != null && discoveryOrchestrationService != null) {
             discoveryPort.start(localProfileService.asPeerIdentity(localProfile), localEndpoint)
             discoveryPort.broadcastHello()
@@ -129,7 +154,7 @@ class NodeLifecycleService(
             helloJob = scope.launch {
                 while (true) {
                     discoveryPort.broadcastHello()
-                    delay(10_000)
+                    delay(DISCOVERY_HELLO_INTERVAL_MILLIS)
                 }
             }
         }
@@ -165,6 +190,7 @@ class NodeLifecycleService(
         relayHeartbeatJob?.cancel()
         helloJob?.cancel()
         discoveryJob?.cancel()
+        callMediaService.shutdown()
         if (configuration.featureFlags.discoveryEnabled) {
             discoveryPort?.broadcastBye()
             discoveryPort?.stop()
@@ -281,19 +307,19 @@ class NodeLifecycleService(
             PacketType.CALL_INVITE -> {
                 verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
                 val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as CallInvite
-                callSignalingService.handleInvite(payload)
+                callMediaService.handleInvite(payload)
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
             PacketType.CALL_SIGNAL -> {
                 verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
                 val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as CallSignalPayload
-                callSignalingService.handleSignal(payload)
+                callMediaService.handleSignal(payload)
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
             PacketType.CALL_HANGUP -> {
                 verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
                 val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as CallHangup
-                callSignalingService.handleHangup(payload)
+                callMediaService.handleHangup(payload)
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
             PacketType.PEER_LOOKUP -> {
@@ -332,10 +358,31 @@ class NodeLifecycleService(
     )
 
     /**
+     * Sends a message to a chat by conversation id.
+     */
+    suspend fun sendMessage(conversationId: String, body: String) = chatMessagingService.sendToConversation(conversationId, body)
+
+    /**
+     * Sends a message into a thread.
+     */
+    suspend fun sendThreadMessage(
+        conversationId: String,
+        rootMessageId: String,
+        body: String,
+        parentMessageId: String? = null,
+    ) = chatMessagingService.sendThreadMessage(conversationId, rootMessageId, body, parentMessageId)
+
+    /**
      * Starts an active discovery lookup for a specific peer when discovery is enabled.
      */
     suspend fun discoverPeer(peerId: String) {
-        discoveryPort?.lookupPeer(peerId)
+        val port = discoveryPort ?: return
+        repeat(DISCOVERY_LOOKUP_ATTEMPTS) { attempt ->
+            port.lookupPeer(peerId)
+            if (attempt < DISCOVERY_LOOKUP_ATTEMPTS - 1) {
+                delay(DISCOVERY_LOOKUP_RETRY_MILLIS)
+            }
+        }
     }
 
     /**
@@ -358,7 +405,88 @@ class NodeLifecycleService(
     /**
      * Starts call signaling with a trusted peer.
      */
-    suspend fun startCall(targetPeerId: String, conversationId: String? = null, offer: String) = callSignalingService.invite(targetPeerId, conversationId, offer)
+    suspend fun startCall(targetPeerId: String, conversationId: String? = null, offer: String) =
+        callMediaService.startDirectCall(targetPeerId, conversationId, offer, CallType.AUDIO)
+
+    /** Запускает исходящий 1:1 аудиозвонок. */
+    suspend fun startAudioCall(targetPeerId: String, conversationId: String? = null, offer: String? = null): CallSession {
+        return callMediaService.startDirectCall(targetPeerId, conversationId, offer, CallType.AUDIO)
+    }
+
+    /** Запускает исходящий 1:1 видеозвонок. */
+    suspend fun startVideoCall(targetPeerId: String, conversationId: String? = null, offer: String? = null): CallSession {
+        return callMediaService.startDirectCall(targetPeerId, conversationId, offer, CallType.VIDEO)
+    }
+
+    /** Запускает исходящий групповой аудиозвонок. */
+    suspend fun startGroupAudioCall(
+        targetPeerIds: Set<String>,
+        conversationId: String? = null,
+        offer: String? = null,
+        roomTitle: String? = null,
+    ): CallSession {
+        return callMediaService.startGroupCall(targetPeerIds, conversationId, offer, CallType.AUDIO, roomTitle)
+    }
+
+    /** Запускает исходящий групповой видеозвонок. */
+    suspend fun startGroupVideoCall(
+        targetPeerIds: Set<String>,
+        conversationId: String? = null,
+        offer: String? = null,
+        roomTitle: String? = null,
+    ): CallSession {
+        return callMediaService.startGroupCall(targetPeerIds, conversationId, offer, CallType.VIDEO, roomTitle)
+    }
+
+    /** Принимает входящий звонок. */
+    suspend fun acceptCall(callId: String, recipientPeerId: String, answer: String? = null): CallSignal {
+        return callMediaService.accept(callId, recipientPeerId, answer)
+    }
+
+    /** Отклоняет входящий звонок. */
+    suspend fun rejectCall(callId: String, recipientPeerId: String, reason: String): CallSignal {
+        return callMediaService.reject(callId, recipientPeerId, reason)
+    }
+
+    /** Подключается к звонку. */
+    suspend fun joinCall(callId: String, recipientPeerId: String, answer: String? = null): CallSignal {
+        return callMediaService.join(callId, recipientPeerId, answer)
+    }
+
+    /** Выходит из звонка. */
+    suspend fun leaveCall(callId: String, recipientPeerId: String, reason: String): CallSignal {
+        return callMediaService.leave(callId, recipientPeerId, reason)
+    }
+
+    /** Завершает звонок. */
+    suspend fun endCall(callId: String, reason: String): CallSession? = callMediaService.end(callId, reason)
+
+    /** Возвращает активные звонки. */
+    suspend fun observeActiveCalls(): List<CallSession> = callSignalingService.activeSessions()
+
+    /** Возвращает входящие звонки. */
+    suspend fun observeIncomingCalls(): List<CallSession> = callSignalingService.incomingSessions()
+
+    /** Возвращает участников звонка. */
+    suspend fun observeCallParticipants(callId: String): List<CallParticipant> = callSignalingService.participants(callId)
+
+    /** Возвращает события звонка. */
+    suspend fun observeCallEvents(callId: String, limit: Int = 200): List<CallEvent> = callSignalingService.events(callId, limit)
+
+    /** Переключает микрофон в рамках звонка. */
+    suspend fun toggleMicrophone(callId: String, enabled: Boolean): CallMediaState? = callMediaService.toggleMicrophone(callId, enabled)
+
+    /** Переключает камеру в рамках звонка. */
+    suspend fun toggleCamera(callId: String, enabled: Boolean): CallMediaState? = callMediaService.toggleCamera(callId, enabled)
+
+    /** Переключает активную камеру в рамках звонка. */
+    suspend fun switchCamera(callId: String): CallMediaState? = callMediaService.switchCamera(callId)
+
+    /** Возвращает текущий media-state звонка. */
+    suspend fun observeMediaState(callId: String): CallMediaState? = callMediaService.mediaState(callId)
+
+    /** Возвращает текущий media-stats звонка. */
+    suspend fun observeMediaStats(callId: String): CallMediaStats? = callMediaService.mediaStats(callId)
 
     /**
      * Produces a metrics snapshot for the current node.
@@ -383,6 +511,7 @@ class NodeLifecycleService(
             ),
         )
         routingService.learnDirectEndpoint(peerId, endpoint)
+        topologyStateService.onPeerDiscovered(peerId, endpoint, qualityScore = 900)
     }
 
     /**
@@ -391,6 +520,32 @@ class NodeLifecycleService(
     suspend fun forgetPeerEndpoint(peerId: String) {
         endpointCachePort.removePeer(peerId)
         routingService.invalidateRoute(peerId)
+        topologyStateService.onPeerLost(peerId, "manual-forget")
+    }
+
+    /** Возвращает topology snapshot текущего runtime. */
+    suspend fun observeTopologyState(): NetworkTopologyState = topologyStateService.observeTopologyState()
+
+    /** Принудительно запускает topology refresh и возвращает новый snapshot. */
+    suspend fun forceTopologyRefresh(): NetworkTopologyState = topologyStateService.forceRefresh()
+
+    /** Возвращает роль локального узла и текущего хоста. */
+    suspend fun observeHostRole(): NetworkRoleState = topologyStateService.observeHostRole()
+
+    /** Возвращает снимок здоровья маршрутов. */
+    suspend fun inspectRouteHealth(): List<RouteHealth> = topologyStateService.inspectRouteHealth()
+
+    /** Возвращает активную стратегию связности к peer. */
+    suspend fun observeConnectivityStrategy(peerId: String): ConnectivityStrategy =
+        topologyStateService.observeConnectivityStrategy(peerId)
+
+    /** Возвращает текущий relay mode узла. */
+    suspend fun relayModeState(): RelayMode = topologyStateService.relayModeState()
+
+    private companion object {
+        private const val DISCOVERY_HELLO_INTERVAL_MILLIS = 5_000L
+        private const val DISCOVERY_LOOKUP_ATTEMPTS = 3
+        private const val DISCOVERY_LOOKUP_RETRY_MILLIS = 700L
     }
 
     private suspend fun learnObservedNetworkState(envelope: PacketEnvelope) {

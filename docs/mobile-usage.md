@@ -1,174 +1,123 @@
 # Mobile Usage
 
-`simulator` теперь показывает backend ровно как библиотеку для мобильного приложения.
-Во всех примерах используются только:
-- `org.expert.link.mesh.backend.MeshBackend`
-- `org.expert.link.mesh.contract.api.MeshNode`
-- модели из `org.expert.link.mesh.contract.*`
+## Используемые модули
+Клиентский код использует только:
+- `backend`
+- `contract`
 
-Внутренние пакеты `backend:data`, `backend:engine`, `backend:infra`, `backend:runtime` мобильное приложение не использует.
+Внутренние backend-модули `backend:data`, `backend:application`, `backend:infra` и `backend:runtime` напрямую не используются.
 
-## Импорты
+## Точка входа
 ```kotlin
-import org.expert.link.mesh.backend.MeshBackend
-import org.expert.link.mesh.contract.api.MeshCallSignalCommand
-import org.expert.link.mesh.contract.api.MeshChatCommand
-import org.expert.link.mesh.contract.api.MeshFileTransferCommand
-import org.expert.link.mesh.contract.api.MeshHangupCallCommand
-import org.expert.link.mesh.contract.api.MeshNode
-import org.expert.link.mesh.contract.api.MeshStartCallCommand
-import org.expert.link.mesh.contract.config.MeshFeatureFlags
-import org.expert.link.mesh.contract.config.MeshNodeConfig
-import org.expert.link.mesh.contract.config.MeshRelayConfig
+val node = MeshBackend.launch(config)
 ```
 
-## Запуск узла
-Запрос:
-- `MeshNodeConfig`
-
-Вызов:
+Запуск с platform media-engine:
 ```kotlin
-val node: MeshNode = MeshBackend.launch(config)
+val node = MeshBackend.launch(config, mediaEngine = platformMediaEngine)
 ```
 
-Ответ:
-- `MeshNode`
-- `node.profile`
-- `node.endpoint`
+Типы:
+- вход: `MeshNodeConfig`
+- результат: `MeshNode`
 
-## Pairing
-Вызовы:
+## Основные вызовы
+### Профиль
 ```kotlin
-val invite: String = node.createPairingInvite()
+val profile = node.profile
+val endpoint = node.endpoint
+```
+
+### Pairing
+```kotlin
+val invite = node.createPairingInvite()
 val session = node.pairWithInvite(invite)
 val peers = node.peers()
 ```
 
-Модели:
-- `String` invite
-- `MeshPairingSession`
-- `MeshPairedPeer`
-
-## Discovery и routing
-Вызовы:
+### Discovery
 ```kotlin
 node.announcePresence()
-node.discoverPeer(targetPeerId)
+node.discoverPeer(peerId)
 val nearby = node.nearbyPeers()
 val routes = node.routes()
-val plan = node.routingPlan(targetPeerId)
-val relay = node.relayStatus()
+val plan = node.routingPlan(peerId)
 ```
 
-Модели:
-- `MeshNearbyPeer`
-- `MeshRouteInfo`
-- `MeshRoutingPlan`
-- `MeshRelayStatus`
-
-## Диалог и сообщения
-Вызовы:
+### Topology и сеть
 ```kotlin
-val conversation = node.openConversation(targetPeerId)
-val outbound = node.sendChat(
-    MeshChatCommand(
-        targetPeerId = targetPeerId,
-        body = "hello",
-        conversationId = conversation.conversationId,
-    ),
-)
+val topology = node.observeTopologyState()
+val refreshed = node.forceTopologyRefresh()
+val hostRole = node.observeHostRole()
+val strategy = node.observeConnectivityStrategy(peerId)
+val routeHealth = node.inspectRouteHealth()
+val relayMode = node.relayModeState()
+```
+
+### Messaging
+```kotlin
+val conversation = node.openConversation(peerId)
+val message = node.sendChat(command)
 val messages = node.messages(conversation.conversationId)
 val receipts = node.messageReceipts()
 ```
 
-Модели:
-- `MeshConversation`
-- `MeshChatCommand`
-- `MeshChatMessage`
-- `MeshMessageReceipt`
-
-## Передача файлов
-`MeshFileTransferCommand.path` считается платформенным file handle.
-На JVM это обычный путь, на мобильной платформе позже это может быть URI, sandbox path или иной локальный идентификатор файла.
-
-Вызовы:
+### Group chat
 ```kotlin
-val transfer = node.sendFile(
-    MeshFileTransferCommand(
-        targetPeerId = targetPeerId,
-        path = filePath,
-        conversationId = conversationId,
-    ),
-)
+val created = node.createGroupChat(command)
+val groups = node.groupChats()
+val events = node.groupEvents(created.conversationId)
+val history = node.groupMessages(created.conversationId)
+```
+
+### Threads
+```kotlin
+val thread = node.createThread(command)
+val updates = node.threadUpdates(thread.chatId)
+val summary = node.threadSummary(thread.chatId, thread.rootMessageId)
+val replies = node.threadMessagesDetailed(thread.chatId, thread.rootMessageId)
+val sent = node.sendThreadReply(replyCommand)
+```
+
+### File transfer
+```kotlin
+val transfer = node.sendFile(command)
 val transfers = node.fileTransfers()
 val resumed = node.resumeFileTransfer(transfer.transferId)
 val cancelled = node.cancelFileTransfer(transfer.transferId)
 ```
 
-Модели:
-- `MeshFileTransferCommand`
-- `MeshFileTransferSession`
-
-## Signaling звонка
-Вызовы:
+### Calls (v2)
 ```kotlin
-val call = node.startCall(
-    MeshStartCallCommand(
-        targetPeerId = targetPeerId,
-        offer = sdpOffer,
-        conversationId = conversationId,
-    ),
-)
-
-val signal = node.sendCallSignal(
-    MeshCallSignalCommand(
-        callId = call.callId,
-        recipientPeerId = targetPeerId,
-        signalType = MeshCallSignalType.ACCEPTED,
-        payload = "ok",
-    ),
-)
-
-val activeCalls = node.callSessions()
-val hangup = node.hangupCall(
-    MeshHangupCallCommand(
-        callId = call.callId,
-        recipientPeerId = targetPeerId,
-        reason = "user-ended",
-    ),
-)
+val audio = node.startAudioCall(command)
+val video = node.startVideoCall(command)
+val group = node.startGroupVideoCall(groupCommand)
+val accepted = node.acceptCall(acceptCommand)
+val joined = node.joinCall(joinCommand)
+val left = node.leaveCall(leaveCommand)
+val ended = node.endCall(endCommand)
+val incoming = node.observeIncomingCalls()
+val active = node.observeActiveCall()
+val participants = node.observeCallParticipants(audio.callId)
+val callEvents = node.observeCallEvents(audio.callId)
+val sessions = node.callSessions()
+val media = node.observeMediaState(audio.callId)
+val stats = node.observeMediaStats(audio.callId)
+node.toggleMicrophone(MeshToggleMicrophoneCommand(audio.callId, enabled = false))
+node.toggleCamera(MeshToggleCameraCommand(audio.callId, enabled = false))
+node.switchCamera(audio.callId)
 ```
 
-Модели:
-- `MeshStartCallCommand`
-- `MeshCallSignalCommand`
-- `MeshHangupCallCommand`
-- `MeshCallSession`
-- `MeshCallSignal`
-
-## Диагностика
-Вызовы:
+### Diagnostics
 ```kotlin
-val events = node.recentEvents(limit = 50)
+val events = node.recentEvents(50)
 val metrics = node.metrics()
+val relay = node.relayStatus()
 ```
 
-Модели:
-- `MeshEventLogEntry`
-- `MeshMetricSnapshot`
-
-## Сценарии simulator
-Смотрите готовые mobile-style примеры:
-- `LifecycleDemoScenario`
-- `PairingDemoScenario`
-- `DiscoveryDemoScenario`
-- `MessagingDemoScenario`
-- `RoutingDemoScenario`
-- `FileTransferDemoScenario`
-- `CallDemoScenario`
-- `DiagnosticsDemoScenario`
-
-Запуск:
-```bash
-./gradlew :simulator:run
-```
+## Host-модули
+- `simulator` показывает сценарии через тот же `MeshNode`.
+- `composeApp/commonMain` использует тот же facade в presentation-слое.
+- `composeApp/androidMain` подключает `AndroidWebRtcMediaEngineAdapter` (real WebRTC).
+- `composeApp/jvmMain` подключает `DesktopWebRtcMediaEngineAdapter` (реальный WebRTC backend, `isSupported=true`).
+- платформенный слой клиента построен через `expect/actual` класс `AppPlatformServices`.

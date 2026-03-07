@@ -2,10 +2,14 @@ package org.expert.link.mesh.domain.model.network
 
 import kotlinx.datetime.Instant
 import kotlinx.serialization.Serializable
+import org.expert.link.mesh.domain.model.call.CallScope
 import org.expert.link.mesh.domain.model.call.CallSignal
+import org.expert.link.mesh.domain.model.call.CallType
 import org.expert.link.mesh.domain.model.filetransfer.FileChunk
 import org.expert.link.mesh.domain.model.filetransfer.FileDescriptor
 import org.expert.link.mesh.domain.model.filetransfer.FileResumeRequest
+import org.expert.link.mesh.domain.model.messaging.ChatType
+import org.expert.link.mesh.domain.model.messaging.MessageType
 
 /** Базовый тип payload, который кладётся в пакет. */
 @Serializable
@@ -68,6 +72,14 @@ data class ChatMessagePayload(
     val senderPeerId: String,
     val recipientPeerId: String,
     val body: String,
+    val chatType: ChatType = ChatType.DIRECT,
+    val chatTitle: String? = null,
+    val chatDescription: String? = null,
+    val participantPeerIds: Set<String> = emptySet(),
+    val messageType: MessageType = MessageType.TEXT,
+    val threadRootMessageId: String? = null,
+    val parentMessageId: String? = null,
+    val replyToMessageId: String? = null,
     val sentAt: Instant,
 ) : PacketPayload
 
@@ -128,9 +140,13 @@ data class FileResumeRequestPayload(
 @Serializable
 data class CallInvite(
     val callId: String,
+    val roomId: String,
     val conversationId: String? = null,
     val senderPeerId: String,
     val recipientPeerId: String,
+    val targetPeerIds: Set<String> = setOf(recipientPeerId),
+    val callType: CallType = CallType.AUDIO,
+    val callScope: CallScope = CallScope.DIRECT,
     val offer: String,
     val createdAt: Instant,
 ) : PacketPayload
@@ -145,6 +161,7 @@ data class CallSignalPayload(
 @Serializable
 data class CallHangup(
     val callId: String,
+    val roomId: String? = null,
     val senderPeerId: String,
     val recipientPeerId: String,
     val reason: String,

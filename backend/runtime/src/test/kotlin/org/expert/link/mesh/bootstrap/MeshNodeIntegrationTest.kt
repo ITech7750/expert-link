@@ -7,7 +7,7 @@ import org.expert.link.mesh.bootstrap.config.FeatureFlags
 import org.expert.link.mesh.bootstrap.config.FileTransferSettings
 import org.expert.link.mesh.bootstrap.config.NodeConfiguration
 import org.expert.link.mesh.bootstrap.config.RelayClientSettings
-import org.expert.link.mesh.infrastructure.transport.InMemoryPacketTransportAdapter
+import org.expert.link.mesh.infrastructure.adapter.InMemoryPacketTransportAdapter
 import org.expert.link.mesh.domain.model.network.PacketType
 import org.junit.jupiter.api.Test
 import java.io.File

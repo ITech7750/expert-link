@@ -1,7 +1,11 @@
 plugins {
-    id("buildsrc.convention.kotlin-jvm")
+    id("org.jetbrains.kotlin.jvm")
     alias(libs.plugins.kotlinSerialization)
     application
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -17,4 +21,8 @@ dependencies {
 
 application {
     mainClass = "org.expert.link.mesh.bootstrap.MeshNodeCliKt"
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }

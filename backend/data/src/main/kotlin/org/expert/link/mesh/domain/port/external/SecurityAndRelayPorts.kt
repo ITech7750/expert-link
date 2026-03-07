@@ -69,6 +69,9 @@ interface MulticastSupportPort {
 
     /** Выполняет подготовку перед join multicast. */
     suspend fun prepareForMulticast()
+
+    /** Освобождает platform-specific ресурсы multicast. */
+    suspend fun releaseMulticast() {}
 }
 
 /** Порт хранения журнала событий. */

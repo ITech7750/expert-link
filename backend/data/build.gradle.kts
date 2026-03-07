@@ -1,9 +1,12 @@
 plugins {
-    id("buildsrc.convention.kotlin-multiplatform")
+    id("org.jetbrains.kotlin.multiplatform")
     alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
+    jvmToolchain(17)
+    jvm()
+
     sourceSets {
         commonMain {
             kotlin.srcDir("src/main/kotlin")

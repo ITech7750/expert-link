@@ -289,3 +289,132 @@ data class PacketEnvelope(
         append(")")
     }
 }
+
+/** Роль узла относительно локальной топологии. */
+@Serializable
+enum class HostRole {
+    HOST,
+    MEMBER,
+    CANDIDATE,
+    UNKNOWN,
+}
+
+/** Текущий режим сетевой связности узла. */
+@Serializable
+enum class ConnectivityMode {
+    LOCAL_MESH,
+    HOST_ROUTED,
+    RELAY_PROXY,
+    DEGRADED,
+}
+
+/** Состояние relay/proxy режима. */
+@Serializable
+enum class RelayMode {
+    DISABLED,
+    STANDBY,
+    ACTIVE_FALLBACK,
+    FORCED,
+}
+
+/** Состояние здоровья маршрута. */
+@Serializable
+enum class RouteHealthState {
+    HEALTHY,
+    DEGRADED,
+    STALE,
+    FAILED,
+}
+
+/** Кандидат на роль хоста локальной сети. */
+@Serializable
+data class HostCandidate(
+    val peerId: String,
+    val endpoint: PeerEndpoint? = null,
+    val score: Int,
+    val reachable: Boolean,
+    val roleHint: HostRole = HostRole.CANDIDATE,
+    val lastSeenAt: Instant,
+)
+
+/** Выбранная стратегия связности к конкретному peer. */
+@Serializable
+data class ConnectivityStrategy(
+    val targetPeerId: String,
+    val routeMode: RouteMode,
+    val connectivityMode: ConnectivityMode,
+    val relayMode: RelayMode,
+    val useRelayGateway: Boolean,
+    val reason: String,
+    val decidedAt: Instant,
+)
+
+/** Снимок здоровья маршрута. */
+@Serializable
+data class RouteHealth(
+    val targetPeerId: String,
+    val nextHopPeerId: String? = null,
+    val routeMode: RouteMode,
+    val state: RouteHealthState,
+    val failureCount: Int = 0,
+    val lastUpdatedAt: Instant,
+    val expiresAt: Instant? = null,
+    val detail: String? = null,
+)
+
+/** Типы событий перестройки топологии. */
+@Serializable
+enum class TopologyEventType {
+    STARTED,
+    HOST_ELECTED,
+    HOST_LOST,
+    HOST_SWITCHED,
+    ROUTE_HEALTH_CHANGED,
+    CONNECTIVITY_MODE_CHANGED,
+    RELAY_MODE_CHANGED,
+    TOPOLOGY_REBUILT,
+    CONTINUITY_DEGRADED,
+    CONTINUITY_RECOVERED,
+}
+
+/** Событие изменения сетевой топологии. */
+@Serializable
+data class TopologyEvent(
+    val eventId: String,
+    val eventType: TopologyEventType,
+    val message: String,
+    val peerId: String? = null,
+    val targetPeerId: String? = null,
+    val detail: Map<String, String> = emptyMap(),
+    val occurredAt: Instant,
+)
+
+/** Состояние роли узла и выбранного хоста. */
+@Serializable
+data class NetworkRoleState(
+    val localPeerId: String,
+    val localRole: HostRole,
+    val currentHostPeerId: String? = null,
+    val hostReachable: Boolean,
+    val failoverInProgress: Boolean,
+    val updatedAt: Instant,
+)
+
+/** Полный снимок состояния топологии и связности узла. */
+@Serializable
+data class NetworkTopologyState(
+    val localPeerId: String,
+    val connectivityMode: ConnectivityMode,
+    val relayMode: RelayMode,
+    val networkRoleState: NetworkRoleState,
+    val hostCandidates: List<HostCandidate> = emptyList(),
+    val routeHealth: List<RouteHealth> = emptyList(),
+    val activeStrategies: List<ConnectivityStrategy> = emptyList(),
+    val pendingAckCount: Int = 0,
+    val queuedPacketCount: Int = 0,
+    val activeFileTransfers: Int = 0,
+    val activeCallSessions: Int = 0,
+    val continuityDegraded: Boolean = false,
+    val recentEvents: List<TopologyEvent> = emptyList(),
+    val refreshedAt: Instant,
+)

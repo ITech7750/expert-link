@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.1.10"
+kotlin = "2.2.20"
 kotlinxDatetime = "0.6.1"
 kotlinxSerialization = "1.8.0"
 kotlinxCoroutines = "1.10.1"
@@ -7,6 +7,14 @@ ktor = "2.3.13"
 slf4j = "2.0.16"
 logback = "1.5.16"
 kotlinLogging = "7.0.5"
+composeMultiplatform = "1.10.2"
+androidGradlePlugin = "8.7.2"
+androidxActivityCompose = "1.10.1"
+androidxCore = "1.15.0"
+zxing = "3.5.3"
+zxingAndroidEmbedded = "4.3.0"
+googleWebrtc = "137.7151.05"
+webrtcJava = "0.14.0"
 junit = "5.11.4"
 junitPlatform = "1.11.4"
 mockk = "1.13.13"
@@ -33,6 +41,12 @@ junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "juni
 junitPlatformLauncher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 assertjCore = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+androidxActivityCompose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivityCompose" }
+androidxCoreKtx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+zxingCore = { module = "com.google.zxing:core", version.ref = "zxing" }
+zxingAndroidEmbedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
+googleWebrtc = { module = "io.github.webrtc-sdk:android", version.ref = "googleWebrtc" }
+webrtcJava = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtcJava" }
 
 [bundles]
 kotlinxCore = ["kotlinxDatetime", "kotlinxSerializationJson", "kotlinxCoroutinesCore"]
@@ -42,5 +56,9 @@ testCore = ["junitJupiter", "junitPlatformLauncher", "mockk", "assertjCore", "ko
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+jetbrainsCompose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+androidApplication = { id = "com.android.application", version.ref = "androidGradlePlugin" }
