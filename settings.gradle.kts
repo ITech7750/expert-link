@@ -1,5 +1,6 @@
 pluginManagement {
     repositories {
+        google()
         gradlePluginPortal()
         mavenCentral()
     }
@@ -8,6 +9,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        google()
         mavenCentral()
     }
 }
@@ -26,6 +28,13 @@ include(":backend:infra")
 include(":backend:runtime")
 include(":bootstrap")
 include(":simulator")
+include(":app-shared")
+include(":app-desktop")
+
+val androidSdkAvailable = System.getenv("ANDROID_SDK_ROOT") != null || System.getenv("ANDROID_HOME") != null
+if (androidSdkAvailable) {
+    include(":app-android")
+}
 
 project(":backend:data").projectDir = file("backend/data")
 project(":backend:engine").projectDir = file("backend/engine")
