@@ -1,148 +1,309 @@
 # expert-link
 
-`expert-link` — Kotlin Multiplatform проект, состоящий из backend-ядра mesh/p2p узла, публичного контракта и клиентских host-модулей.
+## Краткое описание проекта
+expert-link — децентрализованная система связи (мессенджер) на Kotlin Multiplatform. Каждый экземпляр приложения содержит встроенный mesh-узел, который обнаруживает другие узлы в локальной сети и обменивается зашифрованными пакетами напрямую без центрального сервера. Сценарий использования — локальные/закрытые сети и аварийные режимы, когда интернет или централизованные сервисы недоступны.
 
-## Модули
-- `contract` — публичный API и сериализуемые модели.
-- `backend` — публичный facade поверх runtime узла.
-- `backend:data` — domain-модели, entity и port-интерфейсы.
-- `backend:application` — application factory, mapper и service.
-- `backend:infra` — adapter, client и repository-реализации портов.
-- `backend:runtime` — composition root, controller и lifecycle узла.
-- `bootstrap` — CLI host для JVM.
-- `simulator` — сценарии использования публичного backend API.
-- `composeApp` — единый KMP клиентский модуль (Compose Multiplatform):
-  - `commonMain` — общий UI, navigation и presentation;
-  - `jvmMain` — Desktop entry point и desktop platform services;
-  - `androidMain` — Android entry point и android platform services.
+Проект включает backend-ядро mesh-узла, публичный контракт API и клиентские хост-модули (Desktop/Android UI, CLI, simulator).
 
-`composeApp` использует `expect/actual` для платформенного слоя:
-- `commonMain`: `org.expert.link.app.shared.platform.AppPlatformServices` (`expect class`);
-- `jvmMain`: `AppPlatformServices.jvm.kt` (`actual`, Desktop integration);
-- `androidMain`: `AppPlatformServices.android.kt` (`actual`, Android integration).
+## Соответствие ТЗ
+| Требование ТЗ | Статус | Фактическая реализация в коде |
+| --- | --- | --- |
+| Обнаружение узлов | Реализовано | UDP multicast + broadcast fallback (`UdpDiscoveryAdapter`), API `announcePresence`, `discoverPeer`, `nearbyPeers`. |
+| P2P-сессия | Реализовано | Pairing по invite с доверенным состоянием (`createPairingInvite`, `pairWithInvite`). |
+| Текстовые сообщения | Реализовано | Шифрованные direct и group чаты, ACK, статусы доставки, треды (`ChatMessagingService`, `GroupChatService`, `ThreadService`). |
+| Мультихоп | Реализовано | Relay/Flood пересылка пакетов с TTL и hopCount (`RelayService`, `RoutingService`, `RouteMode.RELAY_FLOOD`). |
+| Передача файлов | Частично | Протокол offer/accept/chunk/ack/complete, SHA‑256, resume. Ограничение нагрузки — только последовательная отправка и размер чанка, нет явного лимита скорости/параллелизма. |
+| Real‑time коммуникация | Частично | Signaling реализован в backend, WebRTC media есть на Android и Desktop. Нет отдельной методики/стендов измерений потерь и задержек, в simulator media не подключён. |
+| Топология | Реализовано | `TopologyStateService`: host election, route health, connectivity mode, relay mode. |
+| Реакция на разрывы | Реализовано (базово) | Инвалидация маршрутов при исчерпании ретраев, failover хоста, деградация route health. |
+| Дедупликация / Ack / ретраи | Реализовано | `packetId` dedup, `DELIVERY_ACK` для чатов, очередь и планировщик повторов (`RetrySchedulerService`). Для файлов — chunk ACK и resume. |
+| Безопасность | Реализовано (базово) | Шифрование payload (AES‑GCM + RSA), подпись метаданных, pairing trust, block list, rate limit. |
+| Диагностика и метрики | Реализовано | Event log, метрики, topology snapshot, media stats. |
 
-## Backend-слои
-- `controller` — принимает транспортный запрос и передаёт его в lifecycle узла.
-- `application` — оркестрация use case, фабрики пакетов, мапперы entity.
-- `domain` — модели, entity и порты.
-- `infrastructure` — реализации портов, транспортные и discovery-адаптеры, in-memory repository.
+## Архитектура проекта
+### Модули
+- `contract` — публичный API (`MeshNode`) и DTO.
+- `backend` — публичный facade, запускающий mesh-узел и скрывающий внутренние слои.
+- `backend:data` — доменные модели и port-интерфейсы.
+- `backend:application` — use‑case сервисы.
+- `backend:infra` — реализации портов: UDP discovery, HTTP transport, crypto, in‑memory storage, chunk storage, relay stub.
+- `backend:runtime` — bootstrap, Ktor server и controller для входящих пакетов.
+- `composeApp` — KMP клиент (UI) для Desktop и Android через `AppPlatformServices`.
+- `simulator` — сценарии через публичный API `MeshNode`.
+- `bootstrap` — CLI host для запуска узла по JSON‑конфигу.
 
-Пакеты backend:
-- `org.expert.link.mesh.controller`
-- `org.expert.link.mesh.application.factory`
-- `org.expert.link.mesh.application.mapper`
-- `org.expert.link.mesh.application.service`
-- `org.expert.link.mesh.domain.entity`
-- `org.expert.link.mesh.domain.model`
-- `org.expert.link.mesh.domain.port`
-- `org.expert.link.mesh.infrastructure.adapter`
-- `org.expert.link.mesh.infrastructure.client`
-- `org.expert.link.mesh.infrastructure.repository`
+### Слои backend
+- `controller` принимает входящий `PacketEnvelope` по HTTP.
+- `application` обрабатывает use‑case (pairing, messaging, files, calls).
+- `domain` описывает модели и порты.
+- `infrastructure` реализует транспорт, discovery, storage, crypto.
 
-## Зависимости модулей
-- `backend:data` не зависит от `application`, `infra` и `runtime`.
-- `backend:application` зависит от `backend:data`.
-- `backend:infra` зависит от `backend:data` и `backend:application`.
-- `backend:runtime` зависит от `backend:data`, `backend:application` и `backend:infra`.
-- `backend` зависит от `contract`, `backend:data`, `backend:application` и `backend:runtime`.
-- `simulator` и `composeApp` используют backend только через `backend` и `contract`.
+### Ключевые точки входа
+- `MeshBackend.launch(config, mediaEngine, multicastSupport)` — запуск узла.
+- `MeshNode` — публичный контракт узла.
+- `MeshNodeCli` (`bootstrap`) — headless запуск по JSON.
 
-## Точки входа
-- публичный backend facade: `org.expert.link.mesh.backend.MeshBackend`
-- публичный контракт узла: `org.expert.link.mesh.contract.api.MeshNode`
-- runtime bootstrap: `org.expert.link.mesh.bootstrap.MeshNodeBootstrap`
-- CLI host: `org.expert.link.mesh.bootstrap.MeshNodeCliKt`
-- simulator: `org.expert.link.mesh.simulator.SimulatorMainKt`
+### Схема модулей
+```mermaid
+flowchart LR
+  subgraph Public
+    contract[contract\nMeshNode + DTO]
+  end
+  subgraph Backend
+    backend[backend\nFacade]
+    data[backend:data\nDomain]
+    app[backend:application\nUse-cases]
+    infra[backend:infra\nAdapters]
+    runtime[backend:runtime\nBootstrap + Ktor]
+  end
+  subgraph Hosts
+    compose[composeApp\nDesktop/Android UI]
+    simulator[simulator\nScenarios]
+    bootstrap[bootstrap\nCLI host]
+  end
 
-## Основные сценарии backend
-1. `MeshBackend.launch(config)` создаёт runtime через `MeshNodeBootstrap`.
-2. `MeshNode` вызывает `NodeLifecycleService`.
-3. `NodeLifecycleService` делегирует сценарий в application service.
-4. Application service использует domain-port интерфейсы.
-5. Infrastructure-реализации портов выполняют storage, discovery, transport, crypto и relay-операции.
-6. Входящий HTTP пакет проходит через `PacketRouteController` -> `PacketController` -> `NodeLifecycleService`.
+  contract --> backend
+  backend --> data
+  backend --> app
+  backend --> runtime
+  runtime --> infra
+  app --> data
+  infra --> data
 
-Call subsystem v2:
-- direct/group `audio` и `video` звонки;
-- lifecycle API: `startAudioCall`, `startVideoCall`, `startGroupAudioCall`, `startGroupVideoCall`, `acceptCall`, `rejectCall`, `joinCall`, `leaveCall`, `endCall`;
-- polling API: `observeActiveCall`, `observeIncomingCalls`, `observeCallParticipants`, `observeCallEvents`;
-- media API: `toggleMicrophone`, `toggleCamera`, `switchCamera`, `observeMediaState`, `observeMediaStats`;
-- legacy API `startCall`, `sendCallSignal`, `hangupCall` оставлен для совместимости.
-
-WebRTC media integration:
-- backend использует `CallMediaService` как мост между signaling и media engine;
-- domain media-порты: `MediaEnginePort`, `WebRtcSessionPort`, `AudioCapturePort`, `VideoCapturePort`, `MediaRendererPort`;
-- публичный platform contract: `MeshMediaEngine`, `MeshWebRtcSession`;
-- запуск backend с media: `MeshBackend.launch(config, mediaEngine = ...)`;
-- Android: реализован `AndroidWebRtcMediaEngineAdapter` (real `org.webrtc` PeerConnection, SDP/ICE, audio/video tracks, media state/stats);
-- Desktop: `DesktopWebRtcMediaEngineAdapter` оставлен как честный boundary (`isSupported=false`) до подключения native desktop media backend.
-
-Topology/connectivity subsystem:
-- topology snapshot API: `observeTopologyState`, `forceTopologyRefresh`;
-- host role API: `observeHostRole`;
-- route health API: `inspectRouteHealth`;
-- strategy API: `observeConnectivityStrategy(peerId)`;
-- relay mode API: `relayModeState`;
-- runtime-сервисы `RoutingService`, `DiscoveryOrchestrationService`, `RelayService`, `DeliveryTrackingService` публикуют изменения в `TopologyStateService`;
-- поддержаны сценарии: локальная mesh-сеть, host failover, route rebuild, relay/proxy fallback через `RendezvousRelayClient`.
-
-## Storage
-Постоянное хранение:
-- локальный профиль
-- доверенные узлы
-- pairing-сессии
-- conversations
-- messages
-- file transfer history
-- call sessions
-- event log
-- block list
-
-Runtime cache:
-- endpoint cache
-- route repository
-- reverse path repository
-- dedup cache
-- outgoing queue
-- pending ACK repository
-
-## Сборка и запуск
-Сборка:
-```bash
-./gradlew compileKotlin
+  compose --> backend
+  compose --> contract
+  simulator --> backend
+  simulator --> contract
+  bootstrap --> backend
 ```
 
-Тесты:
+### Поток входящего пакета
+```mermaid
+sequenceDiagram
+  participant A as Узел A (MeshNode)
+  participant Transport as HTTP transport
+  participant Lifecycle as NodeLifecycleService
+  participant UseCase as Chat/File/Call Service
+  participant B as Узел B (MeshNode)
+
+  A->>Transport: POST /api/v1/packets (PacketEnvelope)
+  Transport->>Lifecycle: handleIncomingPacket(envelope)
+  Lifecycle->>Lifecycle: dedup + trust + signature
+  Lifecycle->>UseCase: обработка payload
+  UseCase-->>Lifecycle: результат
+  Lifecycle-->>Transport: 202/502
+  Transport-->>B: ответ доставки
+```
+
+### Поток звонка (signaling + media)
+```mermaid
+sequenceDiagram
+  participant Caller as Узел A
+  participant Callee as Узел B
+  participant MediaA as MediaEngine A
+  participant MediaB as MediaEngine B
+
+  Caller->>Callee: CALL_INVITE (encrypted)
+  MediaA->>Caller: SDP_OFFER/ICE
+  Caller->>Callee: CALL_SIGNAL (SDP_OFFER/ICE)
+  MediaB->>Callee: SDP_ANSWER/ICE
+  Callee->>Caller: CALL_SIGNAL (SDP_ANSWER/ICE)
+  MediaA<->MediaB: WebRTC media (DTLS‑SRTP)
+```
+
+### Поток передачи файла
+```mermaid
+sequenceDiagram
+  participant Sender as Узел A
+  participant Receiver as Узел B
+
+  Sender->>Receiver: FILE_OFFER
+  Receiver->>Sender: FILE_ACCEPT
+  loop chunks
+    Sender->>Receiver: FILE_CHUNK
+    Receiver->>Sender: FILE_ACK
+  end
+  Receiver->>Sender: FILE_COMPLETE (SHA‑256 ok)
+  Receiver->>Sender: FILE_RESUME_REQUEST (если есть пропуски)
+```
+
+## Основные сценарии работы
+### Запуск узла
+1. Создать конфиг `MeshNodeConfig` или использовать `AppPlatformServices.defaultConfig()`.
+2. Запустить `MeshBackend.launch(...)` или UI‑клиент (`composeApp`).
+3. Проверить `MeshNode.profile` и `MeshNode.endpoint`.
+
+### Обнаружение узлов
+1. Включить discovery в конфиге (`featureFlags.discoveryEnabled = true`).
+2. На каждом узле вызвать `announcePresence()`.
+3. Прицельно искать peer через `discoverPeer(peerId)`.
+4. Отобразить `nearbyPeers()`, `routes()` и `routingPlan(peerId)`.
+
+### Сопряжение / invite / QR / trust
+1. Узел A создаёт invite: `createPairingInvite()`.
+2. Узел B принимает invite: `pairWithInvite(invite)`.
+3. В UI: invite можно показать в виде QR, на Android доступно сканирование.
+4. После pairing узлы переходят в `TrustState.TRUSTED` и могут обмениваться сообщениями/файлами/звонками.
+
+### Отправка сообщений
+1. Открыть диалог `openConversation(peerId)` или создать группу `createGroupChat`.
+2. Отправить `sendChat(...)` или `sendMessage(...)`.
+3. История: `messages(conversationId)` или `groupMessages(chatId)`.
+4. Подтверждения доставки: `messageReceipts()`.
+
+### Маршрутизация / relay / multihop
+1. Обеспечить цепочку A‑B‑C через discovery или `rememberPeerEndpoint`.
+2. Удалить прямой маршрут A‑C: `forgetPeerEndpoint(peerId)`.
+3. Отправить сообщение на C с узла A.
+4. Проверить `routingPlan(peerId)` и `routes()` для подтверждения multihop.
+
+### Передача файлов
+1. Узлы должны быть доверенными (pairing).
+2. Запустить `sendFile(MeshFileTransferCommand)`.
+3. Отслеживать `fileTransfers()` и статусы.
+4. При необходимости вызвать `resumeFileTransfer(transferId)` или `cancelFileTransfer(transferId)`.
+
+### Звонки
+1. Узлы должны быть доверенными.
+2. Запустить `startAudioCall` или `startVideoCall` (есть также групповые).
+3. На принимающей стороне — `observeIncomingCalls()`, затем `acceptCall` или `rejectCall`.
+4. Состояния и метрики: `observeMediaState(callId)` и `observeMediaStats(callId)`.
+
+### Диагностика
+1. Логи: `recentEvents(limit)`.
+2. Метрики: `metrics()`.
+3. Сеть и топология: `observeTopologyState()`, `inspectRouteHealth()`.
+
+## Надёжность
+- `PacketEnvelope` содержит `packetId`, `messageId`, `ttl`, `hopCount`.
+- Dedup по `packetId` (`DeduplicationService`, retention по времени).
+- ACK для чатов (`DELIVERY_ACK`) с обновлением `MessageDeliveryStatus`.
+- Очередь исходящих пакетов и ретраи (`OutgoingQueuePort`, `PendingAckRepositoryPort`, `RetrySchedulerService`).
+- Инвалидация маршрутов при исчерпании ретраев (`RoutingService.invalidateRoute`).
+- Обновление route health и failover хоста (`TopologyStateService`).
+
+## Передача файлов
+- Протокол: `FILE_OFFER` → `FILE_ACCEPT` → `FILE_CHUNK` → `FILE_ACK` → `FILE_COMPLETE`.
+- Чанки фиксированного размера (`fileTransfer.chunkSizeBytes`, по умолчанию 65 536).
+- SHA‑256 файла проверяется на стороне получателя после сборки. Хеш каждого чанка передаётся в payload, но не проверяется.
+- Resume: получатель вычисляет недостающие чанки и отправляет `FILE_RESUME_REQUEST`.
+- Ограничение нагрузки: одна последовательная отправка чанков, без отдельного лимита скорости и параллелизма.
+
+## Звонки / real‑time
+- Signaling реализован в backend через `CALL_INVITE`, `CALL_SIGNAL`, `CALL_HANGUP`.
+- Media: WebRTC engine подключается через `MeshMediaEngine`.
+- Android использует `org.webrtc` и STUN `stun:stun.l.google.com:19302`.
+- Desktop использует `dev.onvoid.webrtc` и тот же STUN.
+- Метрики media: RTT, потери, jitter, битрейты (`observeMediaStats`).
+- В simulator media не подключён (NoopMediaEngineAdapter), доступен только signaling и состояния.
+
+## Безопасность
+- Идентичность узла: `peerId = SHA‑256(publicKey)`.
+- Pairing по invite с TTL и nonce защищает от replay.
+- Payload‑шифрование: AES‑GCM, ключ защищён RSA‑OAEP.
+- Подпись метаданных пакета (`PacketSignatureService`).
+- Trust model: доступ к чату/файлам/звонкам только для TRUSTED peers.
+- Anti‑spam: rate‑limit и block list.
+
+## Запуск проекта
+### Требования
+- JDK 17.
+- Для Android: Android SDK и Android Studio.
+
+### Сборка
+```bash
+./gradlew build
+```
+
+### Тесты
 ```bash
 ./gradlew test
 ```
 
-Simulator:
+### Simulator (all scenarios)
 ```bash
 ./gradlew :simulator:run
 ```
 
-Desktop host:
+### Desktop UI
 ```bash
-export JAVA_HOME=/home/itech/.jdks/corretto-21.0.9
-export PATH="$JAVA_HOME/bin:$PATH"
-./gradlew :composeApp:run --args="--memory --name=desktop-demo"
+./gradlew :composeApp:run --args="--name=Алиса --http=18100"
+./gradlew :composeApp:run --args="--name=Боб --http=18101"
 ```
 
-Два desktop-инстанса для сетевой проверки (порт поиска общий и задаётся автоматически, вручную указываем только разные HTTP-порты):
+### CLI host (bootstrap)
+1. Создайте `config.json` по `MeshNodeConfig`.
+2. Запустите:
 ```bash
-./gradlew :composeApp:run --args="--name=Алиса --http=18100" --no-daemon
-./gradlew :composeApp:run --args="--name=Боб --http=18101" --no-daemon
+./gradlew :bootstrap:run --args="config.json"
 ```
 
-Android discovery:
-- В Android-клиенте по умолчанию включён real transport/discovery.
-- Для multicast discovery используются разрешения `ACCESS_WIFI_STATE` и `CHANGE_WIFI_MULTICAST_STATE`.
-- Узлы в одной локальной сети обнаруживаются автоматически (multicast + broadcast по активным интерфейсам).
-- Для связи между разными подсетями нужен внешний rendezvous/relay сервис (stub-клиент в проекте не заменяет внешний сервер).
+Пример `config.json`:
+```json
+{
+  "displayName": "node-1",
+  "bindHost": "0.0.0.0",
+  "httpPort": 18100,
+  "discoveryPort": 19100,
+  "multicastGroup": "239.60.60.60",
+  "featureFlags": {
+    "discoveryEnabled": true,
+    "relayEnabled": true,
+    "inMemoryTransport": false,
+    "inMemoryDiscovery": false
+  },
+  "retry": { "pollIntervalMillis": 1000 },
+  "fileTransfer": { "chunkSizeBytes": 65536, "downloadDirectory": "build/secure-mesh/downloads" },
+  "relay": { "enabled": true, "forceRelayLookup": false, "relayEligible": true },
+  "capabilities": ["chat", "file", "call"],
+  "staticPeers": []
+}
+```
 
-## Документы
-- `docs/architecture.md` — структура модулей и слоёв.
-- `docs/spec.md` — фактические backend-сценарии и модели.
-- `docs/kmp-readiness.md` — текущее распределение common/jvm частей.
-- `docs/mobile-usage.md` — использование backend facade из клиентских host-модулей.
+## Эксплуатация
+- Включение discovery: `featureFlags.discoveryEnabled = true`.
+- Режим in‑memory (локальные демонстрации): `featureFlags.inMemoryTransport = true`, `featureFlags.inMemoryDiscovery = true`.
+- Relay‑режим: `relay.enabled`, `relay.forceRelayLookup`, `relay.relayEligible`.
+- Параметры файлов: `fileTransfer.chunkSizeBytes`, `fileTransfer.downloadDirectory`.
+- Ручные endpoint‑подсказки: `rememberPeerEndpoint(peerId, endpoint)` и `forgetPeerEndpoint(peerId)`.
+- Если `bindHost` равен `0.0.0.0` или `localhost`, узел объявляет в discovery первый приватный IPv4‑адрес.
+
+## Демонстрационные сценарии
+### Simulator
+Запуск `./gradlew :simulator:run` выполняет последовательность сценариев:
+
+| Сценарий | Что демонстрирует |
+| --- | --- |
+| `DiscoveryDemoScenario` | Discovery, список соседей, маршруты и routing plan. |
+| `PairingDemoScenario` | Pairing по invite и доверие. |
+| `MessagingDemoScenario` | Direct‑чат, ACK. |
+| `GroupThreadDemoScenario` | Группы и треды. |
+| `RoutingDemoScenario` | Multihop и relay readiness. |
+| `TopologyDemoScenario` | Topology snapshot, route health, host role. |
+| `FileTransferDemoScenario` | Передача файлов, resume, cancel. |
+| `CallDemoScenario` | Signaling звонков и call‑lifecycle. |
+| `DiagnosticsDemoScenario` | Event log и метрики. |
+
+### UI‑демонстрация (Desktop/Android)
+1. Запустить два узла (Desktop или Android).
+2. На одном узле создать invite и передать на другой (QR или строка).
+3. Проверить `Nearby` и `Pairing` экраны: discovery + trusted peers.
+4. Отправить сообщение в `Chats` и проверить ACK.
+5. Для multihop запустить три узла и удалить прямой маршрут через `Nearby` → `forgetPeerEndpoint`.
+6. Передать файл через экран `Transfers`.
+7. Запустить звонок через экран `Calls`, проверить media stats.
+8. Открыть `Diagnostics` и показать логи/метрики/топологию.
+
+## Ограничения текущей реализации
+- Все репозитории в runtime — in‑memory; состояние теряется при перезапуске.
+- `RendezvousRelayClient` — in‑memory stub, внешнего relay‑сервера нет.
+- Нет Wi‑Fi Direct/BLE; транспорт — HTTP, discovery — UDP multicast/broadcast.
+- File transfer не имеет явного троттлинга; `PAUSED` в модели не используется; хеш чанка не проверяется.
+- На Android отсутствует файловый picker, на Desktop нет QR‑сканирования.
+- Для звонков нет отдельного стенда измерения потерь/задержек; доступны только live‑метрики.
+
+## Документация
+- `docs/architecture.md` — архитектурное описание.
+- `docs/spec.md` — фактические сценарии backend.
+- `docs/mobile-usage.md` — примеры использования `MeshNode`.
+- `docs/kmp-readiness.md` — распределение common/jvm частей.

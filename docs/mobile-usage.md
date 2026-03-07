@@ -119,5 +119,5 @@ val relay = node.relayStatus()
 - `simulator` показывает сценарии через тот же `MeshNode`.
 - `composeApp/commonMain` использует тот же facade в presentation-слое.
 - `composeApp/androidMain` подключает `AndroidWebRtcMediaEngineAdapter` (real WebRTC).
-- `composeApp/jvmMain` подключает `DesktopWebRtcMediaEngineAdapter` (`isSupported=false`, signaling-only media boundary).
+- `composeApp/jvmMain` подключает `DesktopWebRtcMediaEngineAdapter` (реальный WebRTC backend, `isSupported=true`).
 - платформенный слой клиента построен через `expect/actual` класс `AppPlatformServices`.
