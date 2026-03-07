@@ -363,7 +363,7 @@ class NodeLifecycleService(
     /**
      * Produces a metrics snapshot for the current node.
      */
-    fun metricsSnapshot() = nodeMetricsService.snapshot(localProfile.peerId)
+    suspend fun metricsSnapshot() = nodeMetricsService.snapshot(localProfile.peerId)
 
     /**
      * Returns recent event log entries.

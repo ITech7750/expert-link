@@ -28,6 +28,7 @@ data class MeshRetryConfig(
 @Serializable
 data class MeshFileTransferConfig(
     val chunkSizeBytes: Int = 65_536,
+    /** Базовый handle каталога или sandbox-локации для входящих файлов. */
     val downloadDirectory: String = "build/secure-mesh/downloads",
 )
 

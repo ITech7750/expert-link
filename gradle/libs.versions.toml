@@ -29,7 +29,7 @@ slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logbackClassic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 kotlinLogging = { module = "io.github.oshai:kotlin-logging-jvm", version.ref = "kotlinLogging" }
 junitBom = { module = "org.junit:junit-bom", version.ref = "junit" }
-junitJupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junitPlatformLauncher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 assertjCore = { module = "org.assertj:assertj-core", version.ref = "assertj" }
@@ -42,4 +42,5 @@ testCore = ["junitJupiter", "junitPlatformLauncher", "mockk", "assertjCore", "ko
 
 [plugins]
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

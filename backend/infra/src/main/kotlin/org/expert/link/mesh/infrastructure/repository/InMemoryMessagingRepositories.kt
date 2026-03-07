@@ -12,7 +12,6 @@ import org.expert.link.mesh.domain.port.repository.ConversationRepositoryPort
 import org.expert.link.mesh.domain.port.repository.MessageRepositoryPort
 import org.expert.link.mesh.domain.port.repository.OutgoingQueuePort
 import org.expert.link.mesh.domain.port.repository.PendingAckRepositoryPort
-import java.util.ArrayDeque
 
 /** Репозиторий диалогов в памяти. */
 class InMemoryConversationRepositoryAdapter : ConversationRepositoryPort {

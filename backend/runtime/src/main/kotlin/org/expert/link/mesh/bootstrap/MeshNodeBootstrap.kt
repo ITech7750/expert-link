@@ -19,7 +19,6 @@ import org.expert.link.mesh.application.service.DeduplicationService
 import org.expert.link.mesh.application.service.DeliveryTrackingService
 import org.expert.link.mesh.application.service.DiscoveryOrchestrationService
 import org.expert.link.mesh.application.service.EventLogService
-import org.expert.link.mesh.application.service.FileHashService
 import org.expert.link.mesh.application.service.FileResumeService
 import org.expert.link.mesh.application.service.FileTransferService
 import org.expert.link.mesh.application.service.LocalProfileService
@@ -68,7 +67,6 @@ import org.expert.link.mesh.infrastructure.repository.InMemoryPeerRepositoryAdap
 import org.expert.link.mesh.infrastructure.repository.InMemoryPendingAckRepositoryAdapter
 import org.expert.link.mesh.infrastructure.transport.InMemoryPacketTransportAdapter
 import org.expert.link.mesh.infrastructure.transport.KtorPacketTransportAdapter
-import java.io.File
 
 /** Сборщик runtime узла.
  *
@@ -174,8 +172,8 @@ class MeshNodeBootstrap {
             DiscoveryOrchestrationService(cryptoPort, endpointCachePort, liveRoutingService, eventLogService, nodeMetricsService)
         }
 
-        val fileHashService = FileHashService(cryptoPort)
         val fileTransferService = FileTransferService(
+            cryptoPort,
             localProfileService,
             peerTrustVerificationService,
             messageEncryptionService,
@@ -183,8 +181,7 @@ class MeshNodeBootstrap {
             packetSignatureService,
             deliveryTrackingService,
             fileTransferRepositoryPort,
-            FileSystemChunkStorageAdapter(File(configuration.fileTransferSettings.downloadDirectory)),
-            fileHashService,
+            FileSystemChunkStorageAdapter(configuration.fileTransferSettings.downloadDirectory),
             FileResumeService(),
             eventLogService,
             nodeMetricsService,

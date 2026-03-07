@@ -7,7 +7,7 @@ import org.expert.link.mesh.domain.model.identity.PairingSession
 import org.expert.link.mesh.domain.model.identity.TrustState
 import org.expert.link.mesh.domain.model.security.BlockedPeer
 
-/** Порт хранения локального профиля. */
+/** Порт постоянного хранения локального профиля. */
 interface LocalProfileRepositoryPort {
     /** Возвращает локальный профиль или `null`. */
     suspend fun get(): LocalProfile?
@@ -16,7 +16,7 @@ interface LocalProfileRepositoryPort {
     suspend fun save(profile: LocalProfile): LocalProfile
 }
 
-/** Порт хранения доверенных узлов и статуса доверия. */
+/** Порт постоянного хранения доверенных узлов и статуса доверия. */
 interface PeerRepositoryPort {
     /** Сохраняет peer. */
     suspend fun save(peer: PairedPeer): PairedPeer
@@ -31,7 +31,10 @@ interface PeerRepositoryPort {
     suspend fun updateTrustState(peerId: String, trustState: TrustState): PairedPeer?
 }
 
-/** Порт хранения активных сессий сопряжения. */
+/** Порт хранения pairing-сессий.
+ *
+ * Может быть постоянным storage или короткоживущим store, если этого достаточно для платформы.
+ */
 interface PairingSessionRepositoryPort {
     /** Сохраняет pairing-сессию. */
     suspend fun save(session: PairingSession): PairingSession
@@ -52,7 +55,7 @@ interface PairingSessionRepositoryPort {
     suspend fun removeExpired(now: Instant): Int
 }
 
-/** Порт хранения списка блокировок. */
+/** Порт постоянного хранения списка блокировок. */
 interface BlockListRepositoryPort {
     /** Сохраняет запись block list. */
     suspend fun save(blockedPeer: BlockedPeer): BlockedPeer

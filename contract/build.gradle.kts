@@ -1,13 +1,28 @@
 plugins {
-    id("buildsrc.convention.kotlin-jvm")
+    id("buildsrc.convention.kotlin-multiplatform")
     alias(libs.plugins.kotlinSerialization)
 }
 
-dependencies {
-    api(libs.kotlinxDatetime)
-    api(libs.kotlinxSerializationJson)
-    api(libs.kotlinxCoroutinesCore)
-
-    testImplementation(platform(libs.junitBom))
-    testImplementation(libs.bundles.testCore)
+kotlin {
+    sourceSets {
+        commonMain {
+            kotlin.srcDir("src/main/kotlin")
+            dependencies {
+                api(libs.kotlinxDatetime)
+                api(libs.kotlinxSerializationJson)
+                api(libs.kotlinxCoroutinesCore)
+            }
+        }
+        commonTest {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
+        jvmTest {
+            kotlin.srcDir("src/test/kotlin")
+            dependencies {
+                implementation(libs.bundles.testCore)
+            }
+        }
+    }
 }

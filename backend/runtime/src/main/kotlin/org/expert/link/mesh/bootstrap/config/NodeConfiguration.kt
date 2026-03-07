@@ -28,6 +28,7 @@ data class RetrySettings(
 @Serializable
 data class FileTransferSettings(
     val chunkSizeBytes: Int = 65_536,
+    /** Базовый platform-specific handle для входящих файлов. */
     val downloadDirectory: String = "build/secure-mesh/downloads",
 )
 
