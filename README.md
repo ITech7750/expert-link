@@ -295,6 +295,20 @@ sequenceDiagram
 7. Запустить звонок через экран `Calls`, проверить media stats.
 8. Открыть `Diagnostics` и показать логи/метрики/топологию.
 
+ Версия № 1
+![img.png](img.png)
+![img_1.png](img_1.png)
+![img_2.png](img_2.png)
+![img_3.png](img_3.png)
+![img_4.png](img_4.png)
+
+Версия №2
+
+![photo_2026-03-07_20-51-30 (2).jpg](../../Downloads/photo_2026-03-07_20-51-30%20%282%29.jpg)
+![photo_2026-03-07_20-51-29.jpg](../../Downloads/photo_2026-03-07_20-51-29.jpg)
+![photo_2026-03-07_20-51-30.jpg](../../Downloads/photo_2026-03-07_20-51-30.jpg)
+![photo_2026-03-07_20-54-29.jpg](../../Downloads/photo_2026-03-07_20-54-29.jpg)
+
 ## Ограничения текущей реализации
 - Все репозитории в runtime — in‑memory; состояние теряется при перезапуске.
 - `RendezvousRelayClient` — in‑memory stub, внешнего relay‑сервера нет.
