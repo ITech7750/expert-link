@@ -63,6 +63,8 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import org.webrtc.audio.JavaAudioDeviceModule
 
+private const val ANDROID_RTC_TAG = "ExpertLinkCall/AndroidRTC"
+
 /**
  * Реальная Android интеграция WebRTC media-engine.
  *
@@ -71,10 +73,6 @@ import org.webrtc.audio.JavaAudioDeviceModule
 class AndroidWebRtcMediaEngineAdapter(
     context: Context,
 ) : MeshMediaEngine {
-    private companion object {
-        const val TAG = "ExpertLinkCall/AndroidRTC"
-    }
-
     private val appContext = context.applicationContext
     private val eglBase: EglBase = EglBase.create()
     private val factory: PeerConnectionFactory
@@ -82,7 +80,7 @@ class AndroidWebRtcMediaEngineAdapter(
 
     init {
         AndroidVideoTrackRegistry.setSharedContext(eglBase.eglBaseContext)
-        Log.d(TAG, "Initializing adapter")
+        Log.d(ANDROID_RTC_TAG, "Initializing adapter")
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(appContext)
                 .setEnableInternalTracer(false)
@@ -95,7 +93,7 @@ class AndroidWebRtcMediaEngineAdapter(
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
         audioDeviceModule.release()
-        Log.d(TAG, "PeerConnectionFactory ready")
+        Log.d(ANDROID_RTC_TAG, "PeerConnectionFactory ready")
     }
 
     override val isSupported: Boolean = true
@@ -742,7 +740,7 @@ private class AndroidWebRtcSession(
     }
 
     private fun trace(message: String) {
-        Log.d(AndroidWebRtcMediaEngineAdapter.TAG, message)
+        Log.d(ANDROID_RTC_TAG, message)
     }
 
     private fun prepareAudioRouting() {

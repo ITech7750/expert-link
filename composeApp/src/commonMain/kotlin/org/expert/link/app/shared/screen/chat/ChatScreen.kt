@@ -89,6 +89,13 @@ fun ChatScreen(component: ChatComponent) {
     val state by component.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
+    val activeVideoCall = remember(state.activeCall) {
+        state.activeCall?.takeIf { call ->
+            call.callType == MeshCallType.VIDEO &&
+                call.status !in incomingCallStates &&
+                call.status !in finishedCallStates
+        }
+    }
     val selectedThreadMessage = remember(state.selectedThreadRootMessageId, state.messages) {
         state.messages.firstOrNull { it.messageId == state.selectedThreadRootMessageId }
     }
@@ -223,18 +230,20 @@ fun ChatScreen(component: ChatComponent) {
                 }
             }
 
-            state.activeCall?.let { call ->
-                CallCard(
-                    call = call,
-                    localVideoEnabled = state.mediaState?.localVideoEnabled ?: true,
-                    localAudioEnabled = state.mediaState?.localAudioEnabled ?: true,
-                    remotePeerId = state.mediaState?.peers?.firstOrNull()?.peerId,
-                    onAccept = component::acceptCall,
-                    onReject = component::rejectCall,
-                    onHangup = component::hangupCall,
-                    onToggleMicrophone = component::toggleMicrophone,
-                    onToggleCamera = component::toggleCamera,
-                )
+            if (activeVideoCall == null) {
+                state.activeCall?.let { call ->
+                    CallCard(
+                        call = call,
+                        localVideoEnabled = state.mediaState?.localVideoEnabled ?: true,
+                        localAudioEnabled = state.mediaState?.localAudioEnabled ?: true,
+                        remotePeerId = state.mediaState?.peers?.firstOrNull()?.peerId,
+                        onAccept = component::acceptCall,
+                        onReject = component::rejectCall,
+                        onHangup = component::hangupCall,
+                        onToggleMicrophone = component::toggleMicrophone,
+                        onToggleCamera = component::toggleCamera,
+                    )
+                }
             }
 
             if (state.isLoading) {
@@ -246,6 +255,19 @@ fun ChatScreen(component: ChatComponent) {
                 ) {
                     CircularProgressIndicator()
                 }
+            } else if (activeVideoCall != null) {
+                VideoCallStage(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    call = activeVideoCall,
+                    remotePeerId = state.mediaState?.peers?.firstOrNull()?.peerId,
+                    localVideoEnabled = state.mediaState?.localVideoEnabled ?: true,
+                    localAudioEnabled = state.mediaState?.localAudioEnabled ?: true,
+                    onHangup = component::hangupCall,
+                    onToggleMicrophone = component::toggleMicrophone,
+                    onToggleCamera = component::toggleCamera,
+                )
             } else {
                 Box(
                     modifier = Modifier
@@ -337,50 +359,52 @@ fun ChatScreen(component: ChatComponent) {
                 }
             }
 
-            Surface(
-                tonalElevation = 4.dp,
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
-                        .then(
-                            if (state.selectedThreadRootMessageId == null) {
-                                Modifier.imePadding()
-                            } else {
-                                Modifier
-                            },
-                        ),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Bottom,
+            if (activeVideoCall == null) {
+                Surface(
+                    tonalElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 ) {
-                    OutlinedTextField(
-                        value = state.draft,
-                        onValueChange = component::updateDraft,
-                        modifier = Modifier.weight(1f),
-                        label = { Text("Сообщение") },
-                        minLines = 1,
-                        maxLines = 5,
-                        shape = RoundedCornerShape(22.dp),
-                    )
-                    FilledIconButton(
-                        onClick = component::sendMessage,
-                        enabled = state.draft.isNotBlank() && !state.isSending,
-                        modifier = Modifier.size(56.dp),
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                            .then(
+                                if (state.selectedThreadRootMessageId == null) {
+                                    Modifier.imePadding()
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Bottom,
                     ) {
-                        if (state.isSending) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.Send,
-                                contentDescription = null,
-                            )
+                        OutlinedTextField(
+                            value = state.draft,
+                            onValueChange = component::updateDraft,
+                            modifier = Modifier.weight(1f),
+                            label = { Text("Сообщение") },
+                            minLines = 1,
+                            maxLines = 5,
+                            shape = RoundedCornerShape(22.dp),
+                        )
+                        FilledIconButton(
+                            onClick = component::sendMessage,
+                            enabled = state.draft.isNotBlank() && !state.isSending,
+                            modifier = Modifier.size(56.dp),
+                        ) {
+                            if (state.isSending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.Send,
+                                    contentDescription = null,
+                                )
+                            }
                         }
                     }
                 }
@@ -469,6 +493,103 @@ private fun CallCard(
                         Icon(Icons.Outlined.CallEnd, contentDescription = null)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoCallStage(
+    modifier: Modifier = Modifier,
+    call: MeshCallSession,
+    remotePeerId: String?,
+    localVideoEnabled: Boolean,
+    localAudioEnabled: Boolean,
+    onHangup: () -> Unit,
+    onToggleMicrophone: () -> Unit,
+    onToggleCamera: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .background(Color.Black),
+    ) {
+        CallVideoSurface(
+            callId = call.callId,
+            peerId = remotePeerId,
+            local = false,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Text(
+                text = callStatusLabel(call.status),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 110.dp)
+                .width(112.dp)
+                .aspectRatio(1080f / 2400f)
+                .clip(RoundedCornerShape(24.dp))
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(24.dp),
+                ),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 8.dp,
+            shadowElevation = 8.dp,
+        ) {
+            CallVideoSurface(
+                callId = call.callId,
+                peerId = null,
+                local = true,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, vertical = 28.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilledIconButton(
+                onClick = onToggleMicrophone,
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(
+                    imageVector = if (localAudioEnabled) Icons.Outlined.Mic else Icons.Outlined.MicOff,
+                    contentDescription = null,
+                )
+            }
+            FilledIconButton(
+                onClick = onToggleCamera,
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(
+                    imageVector = if (localVideoEnabled) Icons.Outlined.Videocam else Icons.Outlined.VideocamOff,
+                    contentDescription = null,
+                )
+            }
+            FilledIconButton(
+                onClick = onHangup,
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(Icons.Outlined.CallEnd, contentDescription = null)
             }
         }
     }

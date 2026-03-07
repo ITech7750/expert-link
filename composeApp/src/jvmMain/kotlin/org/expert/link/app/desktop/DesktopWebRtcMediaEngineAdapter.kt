@@ -454,7 +454,7 @@ private class DesktopWebRtcSession(
                     videoTrack = factory.createVideoTrack("video-$callId", createdSource)
                     videoTrack?.setEnabled(true)
                     videoTrack?.let { DesktopVideoTrackRegistry.registerLocalTrack(callId, it) }
-                    trace("localVideoTrack ready call=$callId device=${selectedDevice.name}")
+                    trace("localVideoTrack ready call=$callId device=${selectedDevice.descriptor}")
                     updateState { current ->
                         current.copy(
                             cameraFacing = selectedDevice.toFacing(),
