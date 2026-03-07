@@ -121,6 +121,7 @@ private class DesktopWebRtcSession(
     private val peerConnection: RTCPeerConnection = createPeerConnection()
 
     init {
+        trace("session init call=$callId local=$localPeerId remote=$remotePeerIds type=${config.callType}")
         prepareLocalTracks()
         statsJob = scope.launch {
             while (isActive) {
@@ -131,24 +132,31 @@ private class DesktopWebRtcSession(
     }
 
     override suspend fun createOffer(): MeshSessionDescription {
-        return createLocalDescription(isOffer = true)
+        return createLocalDescription(isOffer = true).also { description ->
+            trace("createOffer success call=$callId sdpLength=${description.sdp.length}")
+        }
     }
 
     override suspend fun createAnswer(): MeshSessionDescription {
-        return createLocalDescription(isOffer = false)
+        return createLocalDescription(isOffer = false).also { description ->
+            trace("createAnswer success call=$callId sdpLength=${description.sdp.length}")
+        }
     }
 
     override suspend fun setRemoteDescription(description: MeshSessionDescription) {
+        trace("setRemoteDescription start call=$callId type=${description.type} sdpLength=${description.sdp.length}")
         val remoteDescription = RTCSessionDescription(description.type.toDesktop(), description.sdp)
         suspendCancellableCoroutine<Unit> { continuation ->
             peerConnection.setRemoteDescription(
                 remoteDescription,
                 object : SetSessionDescriptionObserver {
                     override fun onSuccess() {
+                        trace("setRemoteDescription success call=$callId type=${description.type}")
                         continuation.resume(Unit)
                     }
 
                     override fun onFailure(error: String?) {
+                        trace("setRemoteDescription failed call=$callId type=${description.type} error=${error ?: "unknown"}")
                         continuation.resumeWithException(IllegalStateException(error ?: "setRemoteDescription failed"))
                     }
                 },
@@ -157,6 +165,10 @@ private class DesktopWebRtcSession(
     }
 
     override suspend fun addIceCandidate(candidate: MeshIceCandidate) {
+        trace(
+            "addIceCandidate call=$callId sdpMid=${candidate.sdpMid} mLine=${candidate.sdpMLineIndex} " +
+                "length=${candidate.candidate.length}",
+        )
         peerConnection.addIceCandidate(
             RTCIceCandidate(
                 candidate.sdpMid,
@@ -288,6 +300,7 @@ private class DesktopWebRtcSession(
 
         override fun onConnectionChange(state: RTCPeerConnectionState?) {
             val mapped = state.toMeshConnectionState()
+            trace("onConnectionChange call=$callId webrtc=$state mapped=$mapped")
             updateConnectionState(mapped)
             when (mapped) {
                 MeshMediaConnectionState.CONNECTING -> {
@@ -315,7 +328,9 @@ private class DesktopWebRtcSession(
         }
 
         override fun onIceConnectionChange(state: RTCIceConnectionState?) {
-            updateConnectionState(state.toMeshConnectionState())
+            val mapped = state.toMeshConnectionState()
+            trace("onIceConnectionChange call=$callId webrtc=$state mapped=$mapped")
+            updateConnectionState(mapped)
         }
 
         override fun onStandardizedIceConnectionChange(state: RTCIceConnectionState?) = Unit
@@ -326,6 +341,10 @@ private class DesktopWebRtcSession(
 
         override fun onIceCandidate(candidate: RTCIceCandidate?) {
             val value = candidate ?: return
+            trace(
+                "emitLocalIce call=$callId sdpMid=${value.sdpMid} mLine=${value.sdpMLineIndex} " +
+                    "length=${value.sdp.length}",
+            )
             signalFlow.tryEmit(
                 MeshWebRtcSignalEvent(
                     callId = callId,
@@ -344,7 +363,10 @@ private class DesktopWebRtcSession(
 
         override fun onIceCandidatesRemoved(candidates: Array<out RTCIceCandidate>?) = Unit
 
-        override fun onAddStream(stream: MediaStream?) = Unit
+        override fun onAddStream(stream: MediaStream?) {
+            trace("onAddStream call=$callId audio=${stream?.audioTracks?.size ?: 0} video=${stream?.videoTracks?.size ?: 0}")
+            handleRemoteStream(stream)
+        }
 
         override fun onRemoveStream(stream: MediaStream?) = Unit
 
@@ -352,31 +374,50 @@ private class DesktopWebRtcSession(
 
         override fun onRenegotiationNeeded() = Unit
 
-        override fun onAddTrack(receiver: RTCRtpReceiver?, mediaStreams: Array<out MediaStream>?) = Unit
+        override fun onAddTrack(receiver: RTCRtpReceiver?, mediaStreams: Array<out MediaStream>?) {
+            trace("onAddTrack call=$callId kind=${receiver?.track?.kind} mediaStreams=${mediaStreams?.size ?: 0}")
+            handleRemoteTrack(receiver?.track)
+            mediaStreams.orEmpty().forEach(::handleRemoteStream)
+        }
 
         override fun onRemoveTrack(receiver: RTCRtpReceiver?) = Unit
 
         override fun onTrack(transceiver: RTCRtpTransceiver?) {
-            val track = transceiver?.receiver?.track ?: return
-            val mappedPeerId = resolveRemotePeerIdForTrack()
-            when (track.kind) {
-                MediaStreamTrack.AUDIO_TRACK_KIND -> {
-                    val audio = track as? AudioTrack
-                    if (audio != null && mappedPeerId != null) {
-                        audio.setEnabled(true)
-                        remoteAudioTracks[mappedPeerId] = audio
-                    }
-                    markRemoteTrack(audio = true, video = false)
+            trace("onTrack call=$callId kind=${transceiver?.receiver?.track?.kind}")
+            handleRemoteTrack(transceiver?.receiver?.track)
+        }
+    }
+
+    private fun handleRemoteStream(stream: MediaStream?) {
+        stream ?: return
+        trace("handleRemoteStream call=$callId audio=${stream.audioTracks.size} video=${stream.videoTracks.size}")
+        stream.audioTracks.orEmpty().forEach(::handleRemoteTrack)
+        stream.videoTracks.orEmpty().forEach(::handleRemoteTrack)
+    }
+
+    private fun handleRemoteTrack(track: MediaStreamTrack?) {
+        track ?: return
+        val mappedPeerId = resolveRemotePeerIdForTrack()
+        trace("handleRemoteTrack call=$callId kind=${track.kind} mappedPeer=$mappedPeerId remotePeers=$remotePeerIds")
+        when (track.kind) {
+            MediaStreamTrack.AUDIO_TRACK_KIND -> {
+                val audio = track as? AudioTrack
+                if (audio != null && mappedPeerId != null) {
+                    audio.setEnabled(true)
+                    remoteAudioTracks[mappedPeerId] = audio
+                    trace("remoteAudioAttached call=$callId peer=$mappedPeerId")
                 }
-                MediaStreamTrack.VIDEO_TRACK_KIND -> {
-                    val video = track as? VideoTrack
-                    if (video != null && mappedPeerId != null) {
-                        video.setEnabled(true)
-                        remoteVideoTracks[mappedPeerId] = video
-                        DesktopVideoTrackRegistry.registerRemoteTrack(callId, mappedPeerId, video)
-                    }
-                    markRemoteTrack(audio = false, video = true)
+                markRemoteTrack(audio = true, video = false)
+            }
+            MediaStreamTrack.VIDEO_TRACK_KIND -> {
+                val video = track as? VideoTrack
+                if (video != null && mappedPeerId != null) {
+                    video.setEnabled(true)
+                    remoteVideoTracks[mappedPeerId] = video
+                    DesktopVideoTrackRegistry.registerRemoteTrack(callId, mappedPeerId, video)
+                    trace("remoteVideoAttached call=$callId peer=$mappedPeerId")
                 }
+                markRemoteTrack(audio = false, video = true)
             }
         }
     }
@@ -392,6 +433,7 @@ private class DesktopWebRtcSession(
         )
         audioTrack = factory.createAudioTrack("audio-$callId", audioSource)
         audioTrack?.setEnabled(true)
+        trace("localAudioTrack ready call=$callId")
 
         if (config.callType == MeshCallType.VIDEO) {
             runCatching {
@@ -412,6 +454,7 @@ private class DesktopWebRtcSession(
                     videoTrack = factory.createVideoTrack("video-$callId", createdSource)
                     videoTrack?.setEnabled(true)
                     videoTrack?.let { DesktopVideoTrackRegistry.registerLocalTrack(callId, it) }
+                    trace("localVideoTrack ready call=$callId device=${selectedDevice.name}")
                     updateState { current ->
                         current.copy(
                             cameraFacing = selectedDevice.toFacing(),
@@ -442,6 +485,7 @@ private class DesktopWebRtcSession(
         audioTrack?.let { peerConnection.addTrack(it, streamIds) }
         videoTrack?.let { peerConnection.addTrack(it, streamIds) }
         configureSenderBitrates()
+        trace("localTracks added call=$callId audio=${audioTrack != null} video=${videoTrack != null}")
     }
 
     private fun resolveRemotePeerIdForTrack(): String? {
@@ -470,6 +514,10 @@ private class DesktopWebRtcSession(
                 sender.setParameters(parameters)
             }
         }
+    }
+
+    private fun trace(message: String) {
+        println("ExpertLinkCall/DesktopRTC $message")
     }
 
     private suspend fun createLocalDescription(isOffer: Boolean): MeshSessionDescription {

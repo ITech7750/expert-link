@@ -13,6 +13,8 @@ import kotlin.random.Random
 data class PlatformCapabilities(
     val canCopyText: Boolean = false,
     val canShareText: Boolean = false,
+    val canShareFiles: Boolean = false,
+    val canSaveFiles: Boolean = false,
     val canRenderQr: Boolean = false,
     val canScanQr: Boolean = false,
     val canPickFile: Boolean = false,
@@ -47,6 +49,12 @@ expect class AppPlatformServices(args: List<String> = emptyList()) {
 
     /** Пытается передать текст через системный share flow. */
     suspend fun shareText(label: String, text: String): Result<Unit>
+
+    /** Пытается передать файл через системный share flow. */
+    suspend fun shareFile(label: String, path: String): Result<Unit>
+
+    /** Копирует файл в системную папку загрузок. */
+    suspend fun saveFileToDownloads(path: String, fileName: String): Result<String?>
 
     /** Открывает системный выбор файла. */
     suspend fun pickFile(): Result<String?>

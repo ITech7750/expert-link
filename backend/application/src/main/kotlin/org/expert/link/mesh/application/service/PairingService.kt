@@ -146,7 +146,10 @@ class PairingService(
         )
         val signed = packetSignatureService.signEnvelope(localProfile.privateKey, unsigned)
         val result = deliveryTrackingService.send(signed)
-        require(result.success) { "Failed to send pairing request: ${result.errorMessage}" }
+        require(result.success) {
+            val endpoint = invite.endpointHint?.let { "${it.host}:${it.port}" } ?: "unknown-endpoint"
+            "Failed to send pairing request to ${invite.peerId} via $endpoint: ${result.errorMessage}"
+        }
 
         eventLogService.log(
             category = EventCategory.PAIRING,

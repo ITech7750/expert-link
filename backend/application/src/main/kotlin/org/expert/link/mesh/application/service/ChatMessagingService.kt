@@ -264,7 +264,23 @@ class ChatMessagingService(
             "Peer ${payload.senderPeerId} is not trusted"
         }
         val existingConversation = conversationRepositoryPort.findByConversationId(payload.conversationId)
+        val directConversation = if (payload.chatType == ChatType.DIRECT) {
+            conversationRepositoryPort.findByParticipants(inboundParticipantIds(payload))
+        } else {
+            null
+        }
         val conversation = when {
+            existingConversation == null && directConversation != null -> conversationRepositoryPort.save(
+                directConversation.copy(
+                    title = payload.chatTitle ?: directConversation.title,
+                    description = payload.chatDescription ?: directConversation.description,
+                    participantPeerIds = directConversation.participantPeerIds + inboundParticipantIds(payload),
+                    members = inboundMembers(payload, directConversation.members),
+                    updatedAt = now(),
+                    lastMessageId = payload.messageId,
+                ),
+            )
+
             existingConversation == null -> conversationRepositoryPort.save(
                 Conversation(
                     conversationId = payload.conversationId,
@@ -386,26 +402,48 @@ class ChatMessagingService(
     }
 
     private suspend fun createOrLoadConversation(localPeerId: String, targetPeerId: String): Conversation {
+        val localProfile = localProfileService.require()
+        val trustedPeer = peerTrustVerificationService.requireTrusted(targetPeerId)
         val participants = setOf(localPeerId, targetPeerId)
         val existingDirect = conversationRepositoryPort.list().firstOrNull {
             it.chatType == ChatType.DIRECT && it.participantPeerIds == participants
         }
-        return existingDirect
-            ?: conversationRepositoryPort.save(
+        return if (existingDirect != null) {
+            conversationRepositoryPort.save(
+                existingDirect.copy(
+                    title = trustedPeer?.peerIdentity?.displayName ?: existingDirect.title,
+                    members = existingDirect.members.map { member ->
+                        when (member.peerId) {
+                            localPeerId -> member.copy(displayName = localProfile.displayName)
+                            targetPeerId -> member.copy(displayName = trustedPeer?.peerIdentity?.displayName ?: member.displayName)
+                            else -> member
+                        }
+                    },
+                    updatedAt = now(),
+                ),
+            )
+        } else {
+            conversationRepositoryPort.save(
                 Conversation(
                     conversationId = newId("conversation"),
                     chatType = ChatType.DIRECT,
-                    title = targetPeerId,
+                    title = trustedPeer?.peerIdentity?.displayName ?: targetPeerId,
                     createdByPeerId = localPeerId,
                     participantPeerIds = participants,
                     members = listOf(
-                        ChatMember(localPeerId, localPeerId, ChatMemberRole.OWNER, now()),
-                        ChatMember(targetPeerId, targetPeerId, ChatMemberRole.MEMBER, now()),
+                        ChatMember(localPeerId, localProfile.displayName, ChatMemberRole.OWNER, now()),
+                        ChatMember(
+                            targetPeerId,
+                            trustedPeer?.peerIdentity?.displayName ?: targetPeerId,
+                            ChatMemberRole.MEMBER,
+                            now(),
+                        ),
                     ),
                     createdAt = now(),
                     updatedAt = now(),
                 ),
             )
+        }
     }
 
     private suspend fun sendDirectThreadMessage(
@@ -556,7 +594,8 @@ class ChatMessagingService(
         }
     }
 
-    private fun inboundMembers(payload: ChatMessagePayload, existing: List<ChatMember>): List<ChatMember> {
+    private suspend fun inboundMembers(payload: ChatMessagePayload, existing: List<ChatMember>): List<ChatMember> {
+        val localProfile = localProfileService.require()
         val byPeerId = existing.associateBy { it.peerId }.toMutableMap()
         inboundParticipantIds(payload).forEach { peerId ->
             if (!byPeerId.containsKey(peerId)) {
@@ -565,9 +604,14 @@ class ChatMessagingService(
                 } else {
                     ChatMemberRole.MEMBER
                 }
+                val trustedPeer = peerTrustVerificationService.requireTrusted(peerId)
                 byPeerId[peerId] = ChatMember(
                     peerId = peerId,
-                    displayName = peerId,
+                    displayName = when {
+                        peerId == localProfile.peerId -> localProfile.displayName
+                        !trustedPeer?.peerIdentity?.displayName.isNullOrBlank() -> trustedPeer?.peerIdentity?.displayName.orEmpty()
+                        else -> peerId
+                    },
                     role = role,
                     joinedAt = now(),
                 )

@@ -16,10 +16,13 @@ import org.expert.link.app.shared.presentation.NodeRuntimeStatus
 import org.expert.link.app.shared.presentation.NodeSessionController
 import org.expert.link.mesh.contract.api.MeshAcceptCallCommand
 import org.expert.link.mesh.contract.api.MeshChatCommand
+import org.expert.link.mesh.contract.api.MeshCreateThreadCommand
 import org.expert.link.mesh.contract.api.MeshEndCallCommand
 import org.expert.link.mesh.contract.api.MeshFileTransferCommand
+import org.expert.link.mesh.contract.api.MeshNode
 import org.expert.link.mesh.contract.api.MeshRejectCallCommand
 import org.expert.link.mesh.contract.api.MeshSendMessageCommand
+import org.expert.link.mesh.contract.api.MeshSendThreadMessageCommand
 import org.expert.link.mesh.contract.api.MeshStartCallCommand
 import org.expert.link.mesh.contract.api.MeshToggleCameraCommand
 import org.expert.link.mesh.contract.api.MeshToggleMicrophoneCommand
@@ -30,6 +33,10 @@ import org.expert.link.mesh.contract.model.MeshChatMessage
 import org.expert.link.mesh.contract.model.MeshChatType
 import org.expert.link.mesh.contract.model.MeshConversation
 import org.expert.link.mesh.contract.model.MeshFileTransferSession
+import org.expert.link.mesh.contract.model.MeshFileTransferStatus
+import org.expert.link.mesh.contract.model.MeshPairedPeer
+import org.expert.link.mesh.contract.model.MeshThreadMessage
+import org.expert.link.mesh.contract.model.MeshThreadSummary
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -37,11 +44,19 @@ data class ChatState(
     val runtimeStatus: NodeRuntimeStatus = NodeRuntimeStatus.STOPPED,
     val conversationId: String,
     val peerId: String? = null,
+    val isDirectChat: Boolean = peerId != null,
     val title: String = "Чат",
     val members: Map<String, String> = emptyMap(),
     val localPeerId: String? = null,
     val messages: List<MeshChatMessage> = emptyList(),
+    val threadSummaries: List<MeshThreadSummary> = emptyList(),
+    val selectedThreadRootMessageId: String? = null,
+    val selectedThreadSummary: MeshThreadSummary? = null,
+    val selectedThreadMessages: List<MeshThreadMessage> = emptyList(),
+    val threadDraft: String = "",
+    val isThreadLoading: Boolean = false,
     val transfers: List<MeshFileTransferSession> = emptyList(),
+    val dismissedTransferIds: Set<String> = emptySet(),
     val activeCall: MeshCallSession? = null,
     val mediaState: MeshCallMediaState? = null,
     val draft: String = "",
@@ -53,7 +68,12 @@ data class ChatState(
     val message: String? = null,
 ) {
     val canCallOrSendFile: Boolean
-        get() = !peerId.isNullOrBlank()
+        get() = isDirectChat || !peerId.isNullOrBlank()
+
+    val overlayTransfer: MeshFileTransferSession?
+        get() = transfers
+            .filterNot { it.transferId in dismissedTransferIds || it.status == MeshFileTransferStatus.CANCELLED }
+            .maxByOrNull { it.updatedAt }
 }
 
 class ChatComponent(
@@ -66,6 +86,7 @@ class ChatComponent(
 ) : BaseComponent(context, onNavigate, onBack), KoinComponent {
     private val session: NodeSessionController by inject()
     private val services: AppPlatformServices by inject()
+    private val uiStateStore: ChatUiStateStore by inject()
 
     private val _state = MutableStateFlow(
         ChatState(
@@ -75,6 +96,8 @@ class ChatComponent(
         ),
     )
     val state: StateFlow<ChatState> = _state.asStateFlow()
+    val capabilities
+        get() = services.capabilities
 
     init {
         observeSession()
@@ -125,6 +148,40 @@ class ChatComponent(
         _state.update { it.copy(error = null) }
     }
 
+    fun dismissTransfer(transferId: String) {
+        uiStateStore.dismissTransfer(conversationId, transferId)
+        _state.update { it.copy(dismissedTransferIds = it.dismissedTransferIds + transferId) }
+    }
+
+    fun openThread(rootMessageId: String) {
+        _state.update {
+            it.copy(
+                selectedThreadRootMessageId = rootMessageId,
+                isThreadLoading = true,
+                error = null,
+            )
+        }
+        componentScope.launch {
+            refresh()
+        }
+    }
+
+    fun closeThread() {
+        _state.update {
+            it.copy(
+                selectedThreadRootMessageId = null,
+                selectedThreadSummary = null,
+                selectedThreadMessages = emptyList(),
+                threadDraft = "",
+                isThreadLoading = false,
+            )
+        }
+    }
+
+    fun updateThreadDraft(value: String) {
+        _state.update { it.copy(threadDraft = value) }
+    }
+
     fun goBack() {
         onBack()
     }
@@ -138,28 +195,33 @@ class ChatComponent(
         componentScope.launch {
             _state.update { it.copy(isSending = true, error = null, message = null) }
             val result = session.withNode { node ->
-                val peerId = state.value.peerId
+                val peerId = resolveDirectPeerId(node)
                 if (!peerId.isNullOrBlank()) {
-                    node.sendChat(
+                    val message = node.sendChat(
                         MeshChatCommand(
                             targetPeerId = peerId,
                             body = body,
                             conversationId = conversationId,
                         ),
                     )
+                    SendMessageResult(peerId = peerId, message = message)
                 } else {
-                    node.sendMessage(
+                    SendMessageResult(
+                        peerId = null,
+                        message = node.sendMessage(
                         MeshSendMessageCommand(
                             chatId = conversationId,
                             body = body,
+                        ),
                         ),
                     )
                 }
             }
             _state.update { current ->
                 result.fold(
-                    onSuccess = {
+                    onSuccess = { sent ->
                         current.copy(
+                            peerId = sent.peerId ?: current.peerId,
                             draft = "",
                             isSending = false,
                             error = null,
@@ -178,8 +240,7 @@ class ChatComponent(
     }
 
     fun sendFile() {
-        val peerId = state.value.peerId
-        if (peerId.isNullOrBlank()) {
+        if (!state.value.canCallOrSendFile) {
             _state.update { it.copy(error = "Отправка файлов доступна только в личном чате") }
             return
         }
@@ -199,18 +260,21 @@ class ChatComponent(
                 return@launch
             }
             val result = session.withNode { node ->
+                val resolvedPeerId = resolveDirectPeerId(node)
+                    ?: error("Не удалось определить собеседника для отправки файла")
                 node.sendFile(
                     MeshFileTransferCommand(
-                        targetPeerId = peerId,
+                        targetPeerId = resolvedPeerId,
                         path = path,
                         conversationId = conversationId,
                     ),
-                )
+                ) to resolvedPeerId
             }
             _state.update { current ->
                 result.fold(
-                    onSuccess = {
+                    onSuccess = { (_, resolvedPeerId) ->
                         current.copy(
+                            peerId = resolvedPeerId,
                             isSendingFile = false,
                             message = "Файл отправляется",
                         )
@@ -228,25 +292,27 @@ class ChatComponent(
     }
 
     fun startVideoCall() {
-        val peerId = state.value.peerId
-        if (peerId.isNullOrBlank()) {
+        if (!state.value.canCallOrSendFile) {
             _state.update { it.copy(error = "Видеозвонок доступен только в личном чате") }
             return
         }
         componentScope.launch {
             _state.update { it.copy(isStartingCall = true, error = null, message = null) }
             val result = session.withNode { node ->
+                val resolvedPeerId = resolveDirectPeerId(node)
+                    ?: error("Не удалось определить собеседника для звонка")
                 node.startVideoCall(
                     MeshStartCallCommand(
-                        targetPeerId = peerId,
+                        targetPeerId = resolvedPeerId,
                         conversationId = conversationId,
                     ),
-                )
+                ) to resolvedPeerId
             }
             _state.update { current ->
                 result.fold(
-                    onSuccess = {
+                    onSuccess = { (_, resolvedPeerId) ->
                         current.copy(
+                            peerId = resolvedPeerId,
                             isStartingCall = false,
                             message = "Видеозвонок запущен",
                         )
@@ -392,14 +458,128 @@ class ChatComponent(
 
     fun cancelTransfer(transferId: String) {
         componentScope.launch {
+            uiStateStore.dismissTransfer(conversationId, transferId)
+            _state.update {
+                it.copy(
+                    dismissedTransferIds = it.dismissedTransferIds + transferId,
+                    error = null,
+                    message = null,
+                )
+            }
             val result = session.withNode { node -> node.cancelFileTransfer(transferId) }
             _state.update { current ->
                 result.fold(
                     onSuccess = { current.copy(message = "Передача отменена", error = null) },
-                    onFailure = { error -> current.copy(error = error.message ?: "Не удалось отменить передачу") },
+                    onFailure = { error ->
+                        uiStateStore.restoreTransfer(conversationId, transferId)
+                        current.copy(
+                            dismissedTransferIds = current.dismissedTransferIds - transferId,
+                            error = error.message ?: "Не удалось отменить передачу",
+                        )
+                    },
                 )
             }
             refresh()
+        }
+    }
+
+    fun sendThreadReply() {
+        val rootMessageId = state.value.selectedThreadRootMessageId ?: return
+        val body = state.value.threadDraft.trim()
+        if (body.isBlank()) {
+            _state.update { it.copy(error = "Введите сообщение для треда") }
+            return
+        }
+        componentScope.launch {
+            _state.update { it.copy(isThreadLoading = true, error = null, message = null) }
+            val result = session.withNode { node ->
+                if (node.thread(conversationId, rootMessageId) == null) {
+                    node.createThread(
+                        MeshCreateThreadCommand(
+                            chatId = conversationId,
+                            rootMessageId = rootMessageId,
+                        ),
+                    )
+                }
+                runCatching {
+                    node.sendThreadReply(
+                        MeshSendThreadMessageCommand(
+                            chatId = conversationId,
+                            rootMessageId = rootMessageId,
+                            body = body,
+                        ),
+                    )
+                }.getOrElse {
+                    node.sendThreadMessage(
+                        MeshSendThreadMessageCommand(
+                            chatId = conversationId,
+                            rootMessageId = rootMessageId,
+                            body = body,
+                        ),
+                    )
+                    null
+                }
+            }
+            _state.update { current ->
+                result.fold(
+                    onSuccess = {
+                        current.copy(
+                            threadDraft = "",
+                            isThreadLoading = false,
+                            message = "Ответ отправлен",
+                        )
+                    },
+                    onFailure = { error ->
+                        current.copy(
+                            isThreadLoading = false,
+                            error = error.message ?: "Не удалось отправить ответ",
+                        )
+                    },
+                )
+            }
+            refresh()
+        }
+    }
+
+    fun shareTransfer(transferId: String) {
+        componentScope.launch {
+            val transfer = state.value.transfers.firstOrNull { it.transferId == transferId }
+            val path = transfer?.localPath
+            if (path.isNullOrBlank()) {
+                _state.update { it.copy(error = "Файл ещё недоступен") }
+                return@launch
+            }
+            val result = services.shareFile(
+                label = transfer.descriptor.fileName,
+                path = path,
+            )
+            _state.update { current ->
+                result.fold(
+                    onSuccess = { current.copy(message = "Окно отправки открыто", error = null) },
+                    onFailure = { error -> current.copy(error = error.message ?: "Не удалось поделиться файлом") },
+                )
+            }
+        }
+    }
+
+    fun saveTransferToDownloads(transferId: String) {
+        componentScope.launch {
+            val transfer = state.value.transfers.firstOrNull { it.transferId == transferId }
+            val path = transfer?.localPath
+            if (path.isNullOrBlank()) {
+                _state.update { it.copy(error = "Файл ещё недоступен") }
+                return@launch
+            }
+            val result = services.saveFileToDownloads(
+                path = path,
+                fileName = transfer.descriptor.fileName,
+            )
+            _state.update { current ->
+                result.fold(
+                    onSuccess = { current.copy(message = "Файл сохранён", error = null) },
+                    onFailure = { error -> current.copy(error = error.message ?: "Не удалось сохранить файл") },
+                )
+            }
         }
     }
 
@@ -410,7 +590,14 @@ class ChatComponent(
         val current = state.value
         val result = session.withNode { node ->
             val conversation = node.conversations().firstOrNull { it.conversationId == conversationId }
-            val resolvedPeerId = current.peerId ?: conversation?.directPeerId(current.localPeerId)
+            val localPeerId = node.profile.peerId
+            val localDisplayName = node.profile.displayName
+            val peers = node.peers().associateBy { it.identity.peerId }
+            val resolvedPeerId = resolveDirectPeerId(
+                node = node,
+                current = current.copy(localPeerId = localPeerId),
+                conversation = conversation,
+            )
             val callSessions = node.callSessions()
             val transfers = node.fileTransfers()
                 .filter { transfer ->
@@ -422,12 +609,43 @@ class ChatComponent(
                 .filter { session -> session.belongsToConversation(conversationId, resolvedPeerId) }
                 .sortedByDescending { it.updatedAt }
                 .firstOrNull { it.status !in terminalCallStates }
+            val dismissedTransferIds = uiStateStore.retainTransfers(
+                conversationId = conversationId,
+                activeTransferIds = transfers.mapTo(linkedSetOf()) { it.transferId },
+            ) +
+                transfers.filter { it.status == MeshFileTransferStatus.CANCELLED }.map { it.transferId }
+            val selectedThread = current.selectedThreadRootMessageId?.let { rootMessageId ->
+                loadThreadSnapshot(
+                    node = node,
+                    rootMessageId = rootMessageId,
+                )
+            }
             current.copy(
-                title = conversation?.resolveTitle(current.localPeerId) ?: current.title,
+                isDirectChat = conversation?.chatType == MeshChatType.DIRECT || current.isDirectChat,
+                title = conversation?.resolveTitle(
+                    localPeerId = localPeerId,
+                    localDisplayName = localDisplayName,
+                    peers = peers,
+                ) ?: current.title,
                 peerId = resolvedPeerId,
-                members = conversation?.members?.associate { it.peerId to it.displayName } ?: emptyMap(),
+                members = conversation?.members
+                    ?.associate { member ->
+                        member.peerId to resolveDisplayName(
+                            peerId = member.peerId,
+                            currentName = member.displayName,
+                            localPeerId = localPeerId,
+                            localDisplayName = localDisplayName,
+                            peers = peers,
+                        )
+                    }
+                    .orEmpty(),
                 messages = node.messages(conversationId).sortedBy { it.createdAt },
+                threadSummaries = node.threadUpdates(conversationId).sortedByDescending { it.lastReplyAt ?: conversation?.updatedAt },
+                selectedThreadSummary = selectedThread?.summary,
+                selectedThreadMessages = selectedThread?.messages ?: emptyList(),
+                isThreadLoading = false,
                 transfers = transfers,
+                dismissedTransferIds = dismissedTransferIds,
                 activeCall = call,
                 mediaState = call?.let { node.observeMediaState(it.callId) },
                 isLoading = false,
@@ -438,26 +656,106 @@ class ChatComponent(
             result.getOrElse { error ->
                 old.copy(
                     isLoading = false,
+                    isThreadLoading = false,
                     error = error.message ?: "Не удалось загрузить чат",
                 )
             }
         }
     }
 
-    private fun MeshConversation.resolveTitle(localPeerId: String?): String {
+    private suspend fun loadThreadSnapshot(
+        node: MeshNode,
+        rootMessageId: String,
+    ): ThreadSnapshot {
+        val summary = node.threadSummary(conversationId, rootMessageId)
+        val detailedMessages = node.threadMessagesDetailed(conversationId, rootMessageId)
+        val messages = if (detailedMessages.isNotEmpty()) {
+            detailedMessages
+        } else {
+            val threadId = summary?.threadId ?: "thread-$rootMessageId"
+            node.threadMessages(conversationId, rootMessageId).map { message ->
+                MeshThreadMessage(
+                    threadId = threadId,
+                    chatId = message.conversationId,
+                    rootMessageId = rootMessageId,
+                    messageId = message.messageId,
+                    senderPeerId = message.senderPeerId,
+                    body = message.body,
+                    parentMessageId = message.parentMessageId,
+                    replyToMessageId = message.replyToMessageId,
+                    deliveryStatus = message.deliveryStatus,
+                    createdAt = message.createdAt,
+                    deliveredAt = message.deliveredAt,
+                    failedAt = message.failedAt,
+                )
+            }
+        }
+        return ThreadSnapshot(
+            summary = summary,
+            messages = messages,
+        )
+    }
+
+    private fun MeshConversation.resolveTitle(
+        localPeerId: String?,
+        localDisplayName: String,
+        peers: Map<String, MeshPairedPeer>,
+    ): String {
         return if (chatType == MeshChatType.DIRECT) {
             val peerId = directPeerId(localPeerId)
-            members.firstOrNull { it.peerId == peerId }?.displayName
-                ?.takeIf { it.isNotBlank() }
+            resolveDisplayName(
+                peerId = peerId,
+                currentName = members.firstOrNull { it.peerId == peerId }?.displayName,
+                localPeerId = localPeerId,
+                localDisplayName = localDisplayName,
+                peers = peers,
+            ).takeIf { it.isNotBlank() }
                 ?: title
         } else {
             title
         }
     }
 
+    private fun resolveDisplayName(
+        peerId: String?,
+        currentName: String?,
+        localPeerId: String?,
+        localDisplayName: String,
+        peers: Map<String, MeshPairedPeer>,
+    ): String {
+        if (peerId == null) {
+            return currentName.orEmpty()
+        }
+        if (peerId == localPeerId) {
+            return localDisplayName
+        }
+        val trustedName = peers[peerId]?.identity?.displayName
+        return when {
+            !trustedName.isNullOrBlank() -> trustedName
+            !currentName.isNullOrBlank() && currentName != peerId -> currentName
+            else -> peerId
+        }
+    }
+
     private fun MeshConversation.directPeerId(localPeerId: String?): String? {
         if (chatType != MeshChatType.DIRECT) return null
+        if (localPeerId == null) return null
         return participantPeerIds.firstOrNull { it != localPeerId }
+    }
+
+    private suspend fun resolveDirectPeerId(
+        node: MeshNode,
+        current: ChatState = state.value,
+        conversation: MeshConversation? = null,
+    ): String? {
+        val localPeerId = node.profile.peerId
+        val fallbackPeerId = current.peerId?.takeIf { it.isNotBlank() && it != localPeerId }
+        val directConversation = conversation
+            ?: node.conversations().firstOrNull { it.conversationId == conversationId }
+        if (directConversation?.chatType != MeshChatType.DIRECT) {
+            return fallbackPeerId
+        }
+        return directConversation.directPeerId(localPeerId) ?: fallbackPeerId
     }
 
     private fun MeshCallSession.belongsToConversation(conversationId: String, peerId: String?): Boolean {
@@ -488,4 +786,14 @@ class ChatComponent(
             MeshCallState.LEFT,
         )
     }
+
+    private data class SendMessageResult(
+        val peerId: String?,
+        val message: MeshChatMessage,
+    )
+
+    private data class ThreadSnapshot(
+        val summary: MeshThreadSummary?,
+        val messages: List<MeshThreadMessage>,
+    )
 }

@@ -5,6 +5,7 @@ import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.bringToFront
 import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.router.stack.pop
+import com.arkivanov.decompose.router.stack.replaceCurrent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.Default
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +32,7 @@ class RootComponent(
                 config = config,
                 context = context,
                 onNavigate = ::onNavigate,
+                onReplaceCurrent = ::onReplaceCurrent,
                 onBack = ::onBack,
             )
         },
@@ -46,6 +48,10 @@ class RootComponent(
 
     fun onNavigate(config: Config) {
         navigation.bringToFront(config)
+    }
+
+    fun onReplaceCurrent(config: Config) {
+        navigation.replaceCurrent(config)
     }
 
     fun onBack() {

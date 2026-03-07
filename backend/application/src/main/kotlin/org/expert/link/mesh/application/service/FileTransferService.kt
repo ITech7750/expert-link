@@ -98,7 +98,16 @@ class FileTransferService(
             conversationId = conversationId,
         )
         val signed = packetSignatureService.signEnvelope(localProfile.privateKey, unsigned)
-        deliveryTrackingService.send(signed)
+        val result = deliveryTrackingService.send(signed)
+        if (!result.success) {
+            fileTransferRepositoryPort.save(
+                session.copy(
+                    status = FileTransferStatus.FAILED,
+                    updatedAt = now(),
+                ),
+            )
+            error("Failed to send file offer to $targetPeerId: ${result.errorMessage ?: "unknown delivery error"}")
+        }
         eventLogService.log(
             category = EventCategory.FILE_TRANSFER,
             level = EventLevel.INFO,
@@ -307,7 +316,16 @@ class FileTransferService(
             conversationId = session.conversationId,
         )
         val signed = packetSignatureService.signEnvelope(localProfile.privateKey, unsigned)
-        deliveryTrackingService.send(signed)
+        val result = deliveryTrackingService.send(signed)
+        if (!result.success) {
+            fileTransferRepositoryPort.save(
+                session.copy(
+                    status = FileTransferStatus.FAILED,
+                    updatedAt = now(),
+                ),
+            )
+            error("Failed to send file chunk $chunkIndex: ${result.errorMessage ?: "unknown delivery error"}")
+        }
         eventLogService.log(
             category = EventCategory.FILE_TRANSFER,
             level = EventLevel.INFO,
@@ -341,6 +359,9 @@ class FileTransferService(
             conversationId = conversationId,
         )
         val signed = packetSignatureService.signEnvelope(localProfile.privateKey, unsigned)
-        deliveryTrackingService.send(signed)
+        val result = deliveryTrackingService.send(signed)
+        require(result.success) {
+            "Failed to send $packetType to $targetPeerId: ${result.errorMessage ?: "unknown delivery error"}"
+        }
     }
 }

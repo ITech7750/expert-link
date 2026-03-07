@@ -81,6 +81,7 @@ import org.expert.link.mesh.domain.model.security.SecuritySeverity
 import org.expert.link.mesh.domain.port.external.DiscoveryPort
 import org.expert.link.mesh.domain.port.external.RendezvousRegistryPort
 import org.expert.link.mesh.domain.port.repository.EndpointCachePort
+import org.expert.link.mesh.domain.port.repository.PeerRepositoryPort
 import org.expert.link.mesh.domain.port.repository.ReversePathRepositoryPort
 
 /**
@@ -102,6 +103,7 @@ class NodeLifecycleService(
     private val discoveryPort: DiscoveryPort?,
     private val discoveryOrchestrationService: DiscoveryOrchestrationService?,
     private val reversePathRepositoryPort: ReversePathRepositoryPort,
+    private val peerRepositoryPort: PeerRepositoryPort,
     private val endpointCachePort: EndpointCachePort,
     private val messageEncryptionService: MessageEncryptionService,
     private val packetSignatureService: PacketSignatureService,
@@ -140,6 +142,7 @@ class NodeLifecycleService(
                 else -> RelayMode.DISABLED
             },
         )
+        restoreKnownPeerRoutes()
         if (configuration.featureFlags.discoveryEnabled && discoveryPort != null && discoveryOrchestrationService != null) {
             discoveryPort.start(localProfileService.asPeerIdentity(localProfile), localEndpoint)
             discoveryPort.broadcastHello()
@@ -546,6 +549,19 @@ class NodeLifecycleService(
         private const val DISCOVERY_HELLO_INTERVAL_MILLIS = 5_000L
         private const val DISCOVERY_LOOKUP_ATTEMPTS = 3
         private const val DISCOVERY_LOOKUP_RETRY_MILLIS = 700L
+    }
+
+    private suspend fun restoreKnownPeerRoutes() {
+        peerRepositoryPort.list()
+            .filter { peer -> peer.trustState == org.expert.link.mesh.domain.model.identity.TrustState.TRUSTED }
+            .forEach { peer ->
+                val endpointHint = peer.endpointHint ?: return@forEach
+                routingService.learnDirectEndpoint(
+                    peerId = peer.peerIdentity.peerId,
+                    endpoint = endpointHint,
+                    capabilities = peer.peerIdentity.capabilities,
+                )
+            }
     }
 
     private suspend fun learnObservedNetworkState(envelope: PacketEnvelope) {

@@ -16,6 +16,7 @@ dependencies {
 
     testImplementation(platform(libs.junitBom))
     testImplementation(libs.bundles.testCore)
+    testImplementation(project(":backend:infra"))
 }
 
 tasks.withType<Test>().configureEach {

@@ -41,6 +41,8 @@ actual class AppPlatformServices actual constructor(
     actual val capabilities: PlatformCapabilities = PlatformCapabilities(
         canCopyText = true,
         canShareText = true,
+        canShareFiles = false,
+        canSaveFiles = true,
         canRenderQr = true,
         canScanQr = false,
         canPickFile = true,
@@ -108,6 +110,30 @@ actual class AppPlatformServices actual constructor(
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
             clipboard.setContents(StringSelection(text), null)
         }
+    }
+
+    actual suspend fun shareFile(label: String, path: String): Result<Unit> = Result.failure(
+        UnsupportedOperationException("Системный share файла на desktop не поддерживается"),
+    )
+
+    actual suspend fun saveFileToDownloads(path: String, fileName: String): Result<String?> = runCatching {
+        val source = File(path)
+        require(source.exists()) { "Файл не найден" }
+        val downloadsDir = File(System.getProperty("user.home"), "Downloads").apply { mkdirs() }
+        val target = generateSequence(0) { it + 1 }
+            .map { index ->
+                if (index == 0) {
+                    File(downloadsDir, fileName)
+                } else {
+                    val extension = fileName.substringAfterLast('.', "")
+                    val baseName = if (extension.isBlank()) fileName else fileName.removeSuffix(".$extension")
+                    val resolvedName = if (extension.isBlank()) "$baseName ($index)" else "$baseName ($index).$extension"
+                    File(downloadsDir, resolvedName)
+                }
+            }
+            .first { !it.exists() }
+        source.copyTo(target)
+        target.absolutePath
     }
 
     actual suspend fun pickFile(): Result<String?> = runCatching {

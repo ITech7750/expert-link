@@ -1,6 +1,8 @@
 package org.expert.link.app.shared.screen.invite
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,10 +41,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import org.expert.link.app.shared.platform.QrCodeMatrix
 import org.expert.link.app.shared.ui.components.InlineQrScanner
-import org.expert.link.app.shared.ui.components.QrCodeCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,8 +97,7 @@ fun InviteScreen(component: InviteComponent) {
                 )
                 .padding(paddingValues)
                 .imePadding()
-                .verticalScroll(scrollState)
-                .padding(20.dp),
+                .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             PrimaryTabRow(selectedTabIndex = state.selectedTab.ordinal) {
@@ -109,16 +113,23 @@ fun InviteScreen(component: InviteComponent) {
             when (state.selectedTab) {
                 InviteTab.CREATE -> {
                     Surface(
+                        modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         shape = MaterialTheme.shapes.extraLarge,
                     ) {
                         Column(
                             modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
                             Button(
                                 onClick = component::createInvite,
                                 enabled = !state.isCreating,
+                                modifier = if (component.capabilities.prefersWideLayout) {
+                                    Modifier.align(Alignment.CenterHorizontally)
+                                } else {
+                                    Modifier.fillMaxWidth()
+                                },
                             ) {
                                 Text(if (state.isCreating) "Создание..." else "Создать QR")
                             }
@@ -132,6 +143,7 @@ fun InviteScreen(component: InviteComponent) {
                     }
 
                     Surface(
+                        modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         shape = MaterialTheme.shapes.extraLarge,
                     ) {
@@ -142,11 +154,7 @@ fun InviteScreen(component: InviteComponent) {
                             contentAlignment = Alignment.Center,
                         ) {
                             if (qrCode != null) {
-                                QrCodeCard(
-                                    matrix = qrCode,
-                                    title = "QR",
-                                    subtitle = "",
-                                )
+                                InviteQrPreview(matrix = qrCode)
                             } else {
                                 Text(
                                     text = "Создайте приглашение",
@@ -159,6 +167,7 @@ fun InviteScreen(component: InviteComponent) {
 
                 InviteTab.SCAN -> {
                     Surface(
+                        modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow,
                         shape = MaterialTheme.shapes.extraLarge,
                     ) {
@@ -241,6 +250,39 @@ fun InviteScreen(component: InviteComponent) {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InviteQrPreview(
+    matrix: QrCodeMatrix,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 320.dp)
+            .aspectRatio(1f)
+            .background(Color.White, shape = MaterialTheme.shapes.extraLarge)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.extraLarge),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(18.dp),
+        ) {
+            val moduleSize = size.minDimension / matrix.size.toFloat()
+            for (y in 0 until matrix.size) {
+                for (x in 0 until matrix.size) {
+                    if (!matrix.isDark(x, y)) continue
+                    drawRect(
+                        color = Color(0xFF111111),
+                        topLeft = Offset(x * moduleSize, y * moduleSize),
+                        size = Size(moduleSize, moduleSize),
+                    )
                 }
             }
         }

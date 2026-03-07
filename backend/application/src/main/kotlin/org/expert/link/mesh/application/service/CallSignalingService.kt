@@ -48,6 +48,10 @@ class CallSignalingService(
     private val eventLogService: EventLogService,
     private val nodeMetricsService: NodeMetricsService,
 ) {
+    private fun trace(message: String) {
+        println("ExpertLinkCall/CallSignalingService $message")
+    }
+
     /** Запускает исходящий 1:1 звонок. */
     suspend fun startDirectCall(
         recipientPeerId: String,
@@ -55,6 +59,7 @@ class CallSignalingService(
         offer: String,
         callType: CallType,
     ): CallSession {
+        trace("startDirectCall peer=$recipientPeerId conversation=$conversationId type=$callType offerLength=${offer.length}")
         val local = localProfileService.require()
         val trustedPeer = requireNotNull(peerTrustVerificationService.requireTrusted(recipientPeerId)) {
             "Peer $recipientPeerId is not trusted"
@@ -151,6 +156,7 @@ class CallSignalingService(
             payload = payload,
             conversationId = conversationId,
         )
+        trace("startDirectCall sent invite call=$callId recipient=$recipientPeerId")
         nodeMetricsService.increment("call.outbound.direct")
         return session
     }
@@ -275,7 +281,12 @@ class CallSignalingService(
 
     /** Обрабатывает входящий invite. */
     suspend fun handleInvite(payload: CallInvite): CallSession {
+        trace(
+            "handleInvite call=${payload.callId} sender=${payload.senderPeerId} recipient=${payload.recipientPeerId} " +
+                "targets=${payload.targetPeerIds} type=${payload.callType} offerLength=${payload.offer.length}",
+        )
         val local = localProfileService.require()
+        val trustedSender = peerTrustVerificationService.requireTrusted(payload.senderPeerId)
         val session = callSessionRepositoryPort.findByCallId(payload.callId)
         val now = now()
         val updated = session?.copy(
@@ -309,7 +320,7 @@ class CallSignalingService(
             participants = listOf(
                 CallParticipant(
                     peerId = payload.senderPeerId,
-                    displayName = payload.senderPeerId,
+                    displayName = trustedSender?.peerIdentity?.displayName ?: payload.senderPeerId,
                     state = CallParticipantState.RINGING,
                     muted = false,
                     videoEnabled = true,
@@ -368,11 +379,13 @@ class CallSignalingService(
             note = "Incoming ${payload.callType.name.lowercase()} call invite",
         )
         nodeMetricsService.increment("call.invite.received")
+        trace("handleInvite stored session call=${payload.callId} status=${updated.status}")
         return updated
     }
 
     /** Принимает звонок и отправляет `ACCEPT` + SDP answer. */
     suspend fun accept(callId: String, recipientPeerId: String, answer: String): CallSignal {
+        trace("accept call=$callId recipient=$recipientPeerId answerLength=${answer.length}")
         val signal = sendSignalInternal(
             callId = callId,
             recipientPeerId = recipientPeerId,
@@ -463,6 +476,10 @@ class CallSignalingService(
     /** Обрабатывает входящий сигнальный пакет. */
     suspend fun handleSignal(payload: CallSignalPayload): CallSession? {
         val signal = payload.signal
+        trace(
+            "handleSignal call=${signal.callId} type=${signal.signalType} sender=${signal.senderPeerId} " +
+                "recipient=${signal.recipientPeerId} payloadLength=${signal.payload.length}",
+        )
         val session = callSessionRepositoryPort.findByCallId(signal.callId) ?: return null
         val current = now()
         val nextState = deriveState(signal.signalType, session.status)
@@ -629,6 +646,10 @@ class CallSignalingService(
         muted: Boolean? = null,
         videoEnabled: Boolean? = null,
     ): CallSignal {
+        trace(
+            "sendSignalInternal call=$callId type=$signalType recipient=$recipientPeerId " +
+                "payloadLength=${payload.length} participantState=$participantState muted=$muted videoEnabled=$videoEnabled",
+        )
         val local = localProfileService.require()
         val trustedPeer = requireNotNull(peerTrustVerificationService.requireTrusted(recipientPeerId)) {
             "Peer $recipientPeerId is not trusted"
@@ -750,7 +771,10 @@ class CallSignalingService(
             conversationId = conversationId,
         )
         val signed = packetSignatureService.signEnvelope(localProfile.privateKey, unsigned)
-        deliveryTrackingService.send(signed)
+        val result = deliveryTrackingService.send(signed)
+        require(result.success) {
+            "Failed to send $packetType to $targetPeerId: ${result.errorMessage ?: "unknown delivery error"}"
+        }
     }
 
     private fun deriveState(signalType: CallSignalType, current: CallState): CallState = when (signalType) {
