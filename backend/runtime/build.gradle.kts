@@ -15,7 +15,6 @@ dependencies {
     implementation(libs.bundles.ktorServer)
     implementation(libs.slf4jApi)
     implementation(libs.kotlinLogging)
-    implementation(libs.logbackClassic)
 
     testImplementation(platform(libs.junitBom))
     testImplementation(libs.bundles.testCore)

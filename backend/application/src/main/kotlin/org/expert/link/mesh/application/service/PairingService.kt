@@ -37,6 +37,7 @@ import org.expert.link.mesh.domain.port.repository.PeerRepositoryPort
  */
 class PairingService(
     private val localProfileService: LocalProfileService,
+    private val chatMessagingService: ChatMessagingService,
     private val peerRepositoryPort: PeerRepositoryPort,
     private val pairingSessionRepositoryPort: PairingSessionRepositoryPort,
     private val endpointCachePort: EndpointCachePort,
@@ -191,6 +192,7 @@ class PairingService(
             endpointHint = request.endpointHint,
         )
         peerRepositoryPort.save(pairedPeer)
+        ensureDirectConversation(request.requesterPeerId)
         pairingSessionRepositoryPort.save(
             session.copy(
                 remotePeerId = request.requesterPeerId,
@@ -285,6 +287,7 @@ class PairingService(
             endpointHint = accept.endpointHint,
         )
         peerRepositoryPort.save(pairedPeer)
+        ensureDirectConversation(accept.accepterPeerId)
         pairingSessionRepositoryPort.save(
             session.copy(
                 remotePeerId = accept.accepterPeerId,
@@ -334,5 +337,13 @@ class PairingService(
                 occurredAt = now(),
             ),
         )
+    }
+
+    private suspend fun ensureDirectConversation(peerId: String) {
+        runCatching {
+            chatMessagingService.openConversation(peerId)
+        }.onFailure { error ->
+            logger.warn(error) { "Failed to create direct conversation for paired peer $peerId" }
+        }
     }
 }

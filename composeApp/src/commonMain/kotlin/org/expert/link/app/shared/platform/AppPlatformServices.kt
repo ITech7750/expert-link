@@ -38,6 +38,7 @@ expect class AppPlatformServices(args: List<String> = emptyList()) {
     val capabilities: PlatformCapabilities
 
     fun defaultConfig(): MeshNodeConfig
+    fun persistConfig(config: MeshNodeConfig)
 
     suspend fun launchNode(config: MeshNodeConfig): MeshNode
 

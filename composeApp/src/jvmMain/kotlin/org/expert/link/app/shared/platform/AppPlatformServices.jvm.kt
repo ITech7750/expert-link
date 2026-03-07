@@ -11,16 +11,30 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import org.expert.link.app.desktop.DesktopWebRtcMediaEngineAdapter
 import org.expert.link.app.desktop.buildDesktopQrCode
+import org.expert.link.database.createPersistentRepositoryBundle
 import org.expert.link.mesh.backend.MeshBackend
 import org.expert.link.mesh.contract.api.MeshNode
+import org.expert.link.mesh.contract.config.MeshFileTransferConfig
 import org.expert.link.mesh.contract.config.MeshNodeConfig
+import kotlinx.serialization.json.Json
 
 /** Desktop actual-реализация платформенных сервисов client-модуля. */
 actual class AppPlatformServices actual constructor(
     private val args: List<String>,
 ) {
+    private val json = Json {
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+    }
     private val memoryMode: Boolean = args.any { it == "--memory" }
     private val mediaEngine = DesktopWebRtcMediaEngineAdapter()
+    private val storageDirectory = File(System.getProperty("user.home"), ".expert-link").apply { mkdirs() }
+    private val configFile = File(storageDirectory, "node-config.json")
+    private val persistentRepositories by lazy {
+        createPersistentRepositoryBundle(
+            path = File(storageDirectory, "expert-link.db").absolutePath,
+        )
+    }
 
     actual val platformName: String = "Рабочий стол"
     actual val transportHint: String = if (memoryMode) "Локальная проверка" else "Полная сеть"
@@ -34,11 +48,22 @@ actual class AppPlatformServices actual constructor(
     )
 
     actual fun defaultConfig(): MeshNodeConfig {
-        val base = createDefaultNodeConfig(
+        val fallback = createDefaultNodeConfig(
             displayNamePrefix = "desktop",
             realTransport = true,
             realDiscovery = true,
+        ).copy(
+            fileTransfer = MeshFileTransferConfig(
+                downloadDirectory = File(storageDirectory, "downloads").absolutePath,
+            ),
         )
+        val base = loadPersistedConfig()?.let { persisted ->
+            persisted.copy(
+                fileTransfer = persisted.fileTransfer.copy(
+                    downloadDirectory = File(storageDirectory, "downloads").absolutePath,
+                ),
+            )
+        } ?: fallback
         return args.fold(base) { config, arg ->
             when {
                 arg.startsWith("--name=") -> config.copy(displayName = arg.substringAfter('='))
@@ -57,7 +82,16 @@ actual class AppPlatformServices actual constructor(
         }
     }
 
-    actual suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(config, mediaEngine = mediaEngine)
+    actual fun persistConfig(config: MeshNodeConfig) {
+        configFile.parentFile?.mkdirs()
+        configFile.writeText(json.encodeToString(MeshNodeConfig.serializer(), config))
+    }
+
+    actual suspend fun launchNode(config: MeshNodeConfig): MeshNode = MeshBackend.launch(
+        configuration = config,
+        mediaEngine = mediaEngine,
+        persistentRepositories = persistentRepositories,
+    )
 
     actual suspend fun copyText(label: String, text: String): Result<Unit> = runCatching {
         val clipboard = Toolkit.getDefaultToolkit().systemClipboard
@@ -88,4 +122,13 @@ actual class AppPlatformServices actual constructor(
     )
 
     actual fun buildQrCode(text: String): QrCodeMatrix? = buildDesktopQrCode(text)
+
+    private fun loadPersistedConfig(): MeshNodeConfig? {
+        if (!configFile.exists()) return null
+        return try {
+            json.decodeFromString(MeshNodeConfig.serializer(), configFile.readText())
+        } catch (_: Exception) {
+            null
+        }
+    }
 }

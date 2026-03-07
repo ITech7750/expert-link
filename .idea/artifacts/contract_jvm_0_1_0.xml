@@ -2,7 +2,7 @@
   <artifact type="jar" name="contract-jvm-0.1.0">
     <output-path>$PROJECT_DIR$/contract/build/libs</output-path>
     <root id="archive" name="contract-jvm-0.1.0.jar">
-      <element id="module-output" name="org.expert.link.expert-link.contract.jvmMain" />
+      <element id="module-output" name="expert-link.contract.jvmMain" />
     </root>
   </artifact>
 </component>

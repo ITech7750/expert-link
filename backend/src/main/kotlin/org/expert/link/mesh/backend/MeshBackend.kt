@@ -59,6 +59,7 @@ import org.expert.link.mesh.contract.model.MeshThreadSummary
 import org.expert.link.mesh.contract.model.MeshTopologyState
 import org.expert.link.mesh.domain.model.security.BlockedPeer
 import org.expert.link.mesh.domain.model.identity.PeerIdentity
+import org.expert.link.mesh.domain.port.repository.PersistentRepositoryBundle
 import org.expert.link.mesh.backend.internal.toContract
 import org.expert.link.mesh.backend.internal.toDomain
 import org.expert.link.mesh.backend.internal.toDomainPort
@@ -76,11 +77,13 @@ object MeshBackend {
         configuration: MeshNodeConfig,
         mediaEngine: MeshMediaEngine? = null,
         multicastSupport: MeshMulticastSupport? = null,
+        persistentRepositories: PersistentRepositoryBundle? = null,
     ): MeshNode {
         val components = MeshNodeBootstrap().bootstrapComponents(
             configuration = configuration.toRuntime(),
             mediaEnginePort = mediaEngine?.toDomainPort(),
             multicastSupportPort = multicastSupport?.toDomainPort(),
+            persistentRepositories = persistentRepositories,
         )
         return DefaultMeshNode(components)
     }
