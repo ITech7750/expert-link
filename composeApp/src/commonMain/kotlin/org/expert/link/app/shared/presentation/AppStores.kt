@@ -100,6 +100,7 @@ class NodeSessionController(
             services.launchNode(config)
         }.onSuccess { createdNode ->
             mutex.withLock { node = createdNode }
+            runCatching { services.persistConfig(config) }
             _state.update {
                 it.copy(
                     status = NodeRuntimeStatus.RUNNING,
@@ -149,6 +150,7 @@ class NodeSessionController(
     }
 
     fun updateConfig(config: MeshNodeConfig) {
+        runCatching { services.persistConfig(config) }
         _state.update { it.copy(config = config) }
     }
 

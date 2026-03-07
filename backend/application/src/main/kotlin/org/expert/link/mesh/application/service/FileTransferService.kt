@@ -113,11 +113,11 @@ class FileTransferService(
     /**
      * Accepts an inbound file offer and notifies the sender.
      */
-    suspend fun handleFileOffer(offer: FileOffer): FileTransferSession {
+    suspend fun handleFileOffer(offer: FileOffer, conversationId: String? = null): FileTransferSession {
         val localProfile = localProfileService.require()
         val session = FileTransferSession(
             transferId = offer.transferId,
-            conversationId = null,
+            conversationId = conversationId,
             descriptor = offer.descriptor,
             senderPeerId = offer.senderPeerId,
             recipientPeerId = localProfile.peerId,

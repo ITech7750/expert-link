@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
 
 class LocalProfileServiceTest {
     @Test
-    fun `should create local profile once and reuse stored profile`() = runTest {
+    fun `should create local profile once and refresh mutable fields from config`() = runTest {
         val repository = InMemoryLocalProfileRepositoryAdapter()
         val service = LocalProfileService(repository, KeyMaterialFactory(BasicCryptoAdapter()))
 
@@ -17,8 +17,8 @@ class LocalProfileServiceTest {
         val reused = service.getOrCreate(displayName = "node-b", capabilities = setOf("call"))
 
         assertThat(reused.peerId).isEqualTo(created.peerId)
-        assertThat(reused.displayName).isEqualTo("node-a")
-        assertThat(reused.capabilities).containsExactlyInAnyOrder("chat", "file")
+        assertThat(reused.displayName).isEqualTo("node-b")
+        assertThat(reused.capabilities).containsExactly("call")
         assertThat(repository.get()?.peerId).isEqualTo(created.peerId)
     }
 

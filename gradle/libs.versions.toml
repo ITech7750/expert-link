@@ -19,6 +19,12 @@ junit = "5.11.4"
 junitPlatform = "1.11.4"
 mockk = "1.13.13"
 assertj = "3.27.3"
+koin = "4.1.1"
+decompose = "3.4.0"
+lifecycle = "2.5.0"
+room = "2.8.4"
+sqlite = "2.6.2"
+ksp = "2.2.20-2.0.4"
 
 [libraries]
 kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
@@ -47,6 +53,20 @@ zxingCore = { module = "com.google.zxing:core", version.ref = "zxing" }
 zxingAndroidEmbedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxingAndroidEmbedded" }
 googleWebrtc = { module = "io.github.webrtc-sdk:android", version.ref = "googleWebrtc" }
 webrtcJava = { module = "dev.onvoid.webrtc:webrtc-java", version.ref = "webrtcJava" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+
+
+# koin
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+
+# decompose
+decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
+decompose-extensions-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
+essenty-lifecycle = { module = "com.arkivanov.essenty:lifecycle", version.ref = "lifecycle" }
+
 
 [bundles]
 kotlinxCore = ["kotlinxDatetime", "kotlinxSerializationJson", "kotlinxCoroutinesCore"]
@@ -62,3 +82,6 @@ kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", versio
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 jetbrainsCompose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 androidApplication = { id = "com.android.application", version.ref = "androidGradlePlugin" }
+androidLibrary = { id = "com.android.library", version.ref = "androidGradlePlugin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+androidxRoom = { id = "androidx.room", version.ref = "room" }

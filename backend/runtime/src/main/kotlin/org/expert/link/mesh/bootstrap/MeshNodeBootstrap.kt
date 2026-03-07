@@ -48,6 +48,7 @@ import org.expert.link.mesh.domain.model.network.PeerEndpointCandidate
 import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.security.RateLimitRule
 import org.expert.link.mesh.domain.model.security.RateLimitScope
+import org.expert.link.mesh.domain.port.repository.PersistentRepositoryBundle
 import org.expert.link.mesh.infrastructure.adapter.JvmMulticastSupportAdapter
 import org.expert.link.mesh.infrastructure.adapter.JvmNetworkEnvironmentAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryDedupCacheAdapter
@@ -97,8 +98,9 @@ class MeshNodeBootstrap {
         configuration: NodeConfiguration,
         mediaEnginePort: MediaEnginePort? = null,
         multicastSupportPort: MulticastSupportPort? = null,
+        persistentRepositories: PersistentRepositoryBundle? = null,
     ): MeshNodeRuntime {
-        return bootstrapComponents(configuration, mediaEnginePort, multicastSupportPort).runtime
+        return bootstrapComponents(configuration, mediaEnginePort, multicastSupportPort, persistentRepositories).runtime
     }
 
     /**
@@ -108,31 +110,32 @@ class MeshNodeBootstrap {
         configuration: NodeConfiguration,
         mediaEnginePort: MediaEnginePort? = null,
         multicastSupportPort: MulticastSupportPort? = null,
+        persistentRepositories: PersistentRepositoryBundle? = null,
     ): MeshNodeComponents {
-        val localProfileRepositoryPort = InMemoryLocalProfileRepositoryAdapter()
-        val peerRepositoryPort = InMemoryPeerRepositoryAdapter()
-        val pairingSessionRepositoryPort = InMemoryPairingSessionRepositoryAdapter()
-        val blockListRepositoryPort = InMemoryBlockListRepositoryAdapter()
-        val conversationRepositoryPort = InMemoryConversationRepositoryAdapter()
-        val messageRepositoryPort = InMemoryMessageRepositoryAdapter()
+        val localProfileRepositoryPort = persistentRepositories?.localProfileRepositoryPort ?: InMemoryLocalProfileRepositoryAdapter()
+        val peerRepositoryPort = persistentRepositories?.peerRepositoryPort ?: InMemoryPeerRepositoryAdapter()
+        val pairingSessionRepositoryPort = persistentRepositories?.pairingSessionRepositoryPort ?: InMemoryPairingSessionRepositoryAdapter()
+        val blockListRepositoryPort = persistentRepositories?.blockListRepositoryPort ?: InMemoryBlockListRepositoryAdapter()
+        val conversationRepositoryPort = persistentRepositories?.conversationRepositoryPort ?: InMemoryConversationRepositoryAdapter()
+        val messageRepositoryPort = persistentRepositories?.messageRepositoryPort ?: InMemoryMessageRepositoryAdapter()
         val outgoingQueuePort = InMemoryOutgoingQueueAdapter()
         val pendingAckRepositoryPort = InMemoryPendingAckRepositoryAdapter()
         val endpointCachePort = InMemoryEndpointCacheAdapter()
         val routeRepositoryPort = InMemoryRouteRepositoryAdapter()
         val reversePathRepositoryPort = InMemoryReversePathRepositoryAdapter()
         val dedupCachePort = InMemoryDedupCacheAdapter()
-        val fileTransferRepositoryPort = InMemoryFileTransferRepositoryAdapter()
-        val callSessionRepositoryPort = InMemoryCallSessionRepositoryAdapter()
-        val callRoomRepositoryPort = InMemoryCallRoomRepositoryAdapter()
-        val callParticipantRepositoryPort = InMemoryCallParticipantRepositoryAdapter()
-        val callEventRepositoryPort = InMemoryCallEventRepositoryAdapter()
+        val fileTransferRepositoryPort = persistentRepositories?.fileTransferRepositoryPort ?: InMemoryFileTransferRepositoryAdapter()
+        val callSessionRepositoryPort = persistentRepositories?.callSessionRepositoryPort ?: InMemoryCallSessionRepositoryAdapter()
+        val callRoomRepositoryPort = persistentRepositories?.callRoomRepositoryPort ?: InMemoryCallRoomRepositoryAdapter()
+        val callParticipantRepositoryPort = persistentRepositories?.callParticipantRepositoryPort ?: InMemoryCallParticipantRepositoryAdapter()
+        val callEventRepositoryPort = persistentRepositories?.callEventRepositoryPort ?: InMemoryCallEventRepositoryAdapter()
         val effectiveMediaEnginePort = mediaEnginePort ?: NoopMediaEngineAdapter()
-        val eventLogRepositoryPort = InMemoryEventLogRepositoryAdapter()
-        val groupChatRepositoryPort = InMemoryGroupChatRepositoryAdapter()
-        val chatMemberRepositoryPort = InMemoryChatMemberRepositoryAdapter()
-        val threadRepositoryPort = InMemoryThreadRepositoryAdapter()
-        val threadMessageRepositoryPort = InMemoryThreadMessageRepositoryAdapter()
-        val groupEventRepositoryPort = InMemoryGroupEventRepositoryAdapter()
+        val eventLogRepositoryPort = persistentRepositories?.eventLogRepositoryPort ?: InMemoryEventLogRepositoryAdapter()
+        val groupChatRepositoryPort = persistentRepositories?.groupChatRepositoryPort ?: InMemoryGroupChatRepositoryAdapter()
+        val chatMemberRepositoryPort = persistentRepositories?.chatMemberRepositoryPort ?: InMemoryChatMemberRepositoryAdapter()
+        val threadRepositoryPort = persistentRepositories?.threadRepositoryPort ?: InMemoryThreadRepositoryAdapter()
+        val threadMessageRepositoryPort = persistentRepositories?.threadMessageRepositoryPort ?: InMemoryThreadMessageRepositoryAdapter()
+        val groupEventRepositoryPort = persistentRepositories?.groupEventRepositoryPort ?: InMemoryGroupEventRepositoryAdapter()
 
         val cryptoPort = BasicCryptoAdapter()
         val keyMaterialFactory = KeyMaterialFactory(cryptoPort)
@@ -253,21 +256,6 @@ class MeshNodeBootstrap {
             configuration.fileTransferSettings.downloadDirectory,
             configuration.fileTransferSettings.chunkSizeBytes,
         )
-        val pairingService = PairingService(
-            localProfileService,
-            peerRepositoryPort,
-            pairingSessionRepositoryPort,
-            endpointCachePort,
-            cryptoPort,
-            messageEncryptionService,
-            packetEnvelopeFactory,
-            packetSignatureService,
-            deliveryTrackingService,
-            eventLogService,
-            nodeMetricsService,
-            securityIncidentService,
-            localEndpointProvider = { localEndpoint },
-        )
         val chatMessagingService = ChatMessagingService(
             localProfileService,
             conversationRepositoryPort,
@@ -280,6 +268,22 @@ class MeshNodeBootstrap {
             deliveryTrackingService,
             eventLogService,
             nodeMetricsService,
+        )
+        val pairingService = PairingService(
+            localProfileService,
+            chatMessagingService,
+            peerRepositoryPort,
+            pairingSessionRepositoryPort,
+            endpointCachePort,
+            cryptoPort,
+            messageEncryptionService,
+            packetEnvelopeFactory,
+            packetSignatureService,
+            deliveryTrackingService,
+            eventLogService,
+            nodeMetricsService,
+            securityIncidentService,
+            localEndpointProvider = { localEndpoint },
         )
         val groupChatService = GroupChatService(
             localProfileService = localProfileService,

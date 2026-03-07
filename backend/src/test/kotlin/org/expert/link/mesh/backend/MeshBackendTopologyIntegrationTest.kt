@@ -12,6 +12,30 @@ import org.junit.jupiter.api.Test
 
 class MeshBackendTopologyIntegrationTest {
     @Test
+    fun `should create direct conversation for both peers after pairing`() = runBlocking {
+        val alice = MeshBackend.launch(config("pair-chat-a", 19681))
+        val bob = MeshBackend.launch(config("pair-chat-b", 19682))
+        try {
+            connectBidirectional(alice, bob)
+
+            val invite = bob.createPairingInvite()
+            alice.pairWithInvite(invite)
+            delay(700)
+
+            val aliceChats = alice.conversations()
+            val bobChats = bob.conversations()
+
+            assertThat(aliceChats).hasSize(1)
+            assertThat(bobChats).hasSize(1)
+            assertThat(aliceChats.single().participantPeerIds).contains(alice.profile.peerId, bob.profile.peerId)
+            assertThat(bobChats.single().participantPeerIds).contains(alice.profile.peerId, bob.profile.peerId)
+        } finally {
+            runCatching { alice.stop() }
+            runCatching { bob.stop() }
+        }
+    }
+
+    @Test
     fun `should rebuild topology after host loss and keep local delivery continuity`() = runBlocking {
         val host = MeshBackend.launch(config("topo-host", 19781))
         val nodeA = MeshBackend.launch(config("topo-a", 19782))
@@ -113,4 +137,3 @@ class MeshBackendTopologyIntegrationTest {
         ),
     )
 }
-
