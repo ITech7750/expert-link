@@ -128,6 +128,133 @@ sequenceDiagram
   Receiver->>Sender: FILE_RESUME_REQUEST (если есть пропуски)
 ```
 
+### Messaging ER-диаграмма
+```mermaid
+erDiagram
+    Conversation ||--o{ ChatMessage : contains
+    ChatMessage ||--o{ MessageReceipt : has
+
+    GroupChat ||--o{ ChatMember : includes
+    GroupChat ||--o{ GroupChatEvent : produces
+    GroupChat ||--o{ ChatThread : has
+
+    ChatThread ||--o{ ThreadMessage : contains
+    ChatMessage ||--o| ChatThread : root_for
+
+    Conversation {
+        string conversationId
+        string type
+        string peerId
+        datetime createdAt
+    }
+
+    ChatMessage {
+        string messageId
+        string conversationId
+        string senderId
+        string payload
+        datetime createdAt
+        string deliveryStatus
+    }
+
+    MessageReceipt {
+        string receiptId
+        string messageId
+        string peerId
+        string status
+        datetime updatedAt
+    }
+
+    GroupChat {
+        string chatId
+        string title
+        string createdBy
+        datetime createdAt
+    }
+
+    ChatMember {
+        string memberId
+        string chatId
+        string peerId
+        string role
+        datetime joinedAt
+    }
+
+    GroupChatEvent {
+        string eventId
+        string chatId
+        string eventType
+        string actorId
+        datetime occurredAt
+    }
+
+    ChatThread {
+        string threadId
+        string chatId
+        string rootMessageId
+        string createdBy
+        datetime createdAt
+    }
+
+    ThreadMessage {
+        string threadMessageId
+        string threadId
+        string senderId
+        string payload
+        datetime createdAt
+    }
+```
+
+
+### Calls ER-диаграмма
+```mermaid
+erDiagram
+    CallRoom ||--o{ CallSession : contains
+    CallSession ||--o{ CallParticipant : has
+    CallSession ||--o{ CallEvent : produces
+    CallSession ||--o{ CallInvitation : creates
+
+    CallRoom {
+        string roomId
+        string scope
+        string type
+        datetime createdAt
+    }
+
+    CallSession {
+        string sessionId
+        string roomId
+        string state
+        string callType
+        datetime startedAt
+    }
+
+    CallParticipant {
+        string participantId
+        string sessionId
+        string peerId
+        string participantState
+        datetime joinedAt
+    }
+
+    CallInvitation {
+        string invitationId
+        string sessionId
+        string targetPeerId
+        string status
+        datetime createdAt
+    }
+
+    CallEvent {
+        string eventId
+        string sessionId
+        string eventType
+        string actorId
+        datetime occurredAt
+    }
+```
+
+
 ## Основные сценарии работы
 ### Запуск узла
 1. Создать конфиг `MeshNodeConfig` или использовать `AppPlatformServices.defaultConfig()`.
