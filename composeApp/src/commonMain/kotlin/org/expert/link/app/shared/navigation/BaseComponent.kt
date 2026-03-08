@@ -11,5 +11,6 @@ abstract class BaseComponent(
     val onBack: () -> Unit,
     val onReplaceCurrent: (Config) -> Unit = onNavigate,
 ) : ComponentContext by context {
+
     protected val componentScope = CoroutineScope(SupervisorJob() + Default).withLifecycle(lifecycle)
 }

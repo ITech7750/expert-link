@@ -10,10 +10,13 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -67,9 +70,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.arkivanov.essenty.backhandler.BackCallback
+import com.arkivanov.essenty.backhandler.BackHandler
 import org.expert.link.app.shared.presentation.NodeRuntimeStatus
 import org.expert.link.app.shared.screen.components.MessageBubble
 import org.expert.link.app.shared.screen.components.initials
@@ -86,6 +93,7 @@ import org.expert.link.mesh.contract.model.MeshTransferDirection
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(component: ChatComponent) {
+
     val state by component.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -202,7 +210,8 @@ fun ChatScreen(component: ChatComponent) {
                         ),
                     ),
                 )
-                .padding(paddingValues),
+                .padding(paddingValues)
+                .imePadding(),
         ) {
             if (state.runtimeStatus != NodeRuntimeStatus.RUNNING) {
                 Surface(
@@ -285,16 +294,7 @@ fun ChatScreen(component: ChatComponent) {
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        if (state.threadSummaries.isNotEmpty()) {
-                            item {
-                                ThreadSummaryRow(
-                                    summaries = state.threadSummaries,
-                                    messages = state.messages.associateBy { it.messageId },
-                                    onOpenThread = component::openThread,
-                                )
-                            }
-                        }
-                        items(state.messages, key = { it.messageId }) { message ->
+                        items(state.messages.filter { it.replyToMessageId == null }, key = { it.messageId }) { message ->
                             val senderName = if (message.senderPeerId == state.localPeerId) {
                                 "Вы"
                             } else {
@@ -319,7 +319,7 @@ fun ChatScreen(component: ChatComponent) {
                                     TextButton(onClick = { component.openThread(message.messageId) }) {
                                         Text(
                                             if (message.threadReplyCount > 0) {
-                                                "Тред ${message.threadReplyCount}"
+                                                "${message.threadReplyCount} cooбщений в треде"
                                             } else {
                                                 "Тред"
                                             },
@@ -363,21 +363,14 @@ fun ChatScreen(component: ChatComponent) {
                 Surface(
                     tonalElevation = 4.dp,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    shape = RoundedCornerShape(28.dp),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                            .then(
-                                if (state.selectedThreadRootMessageId == null) {
-                                    Modifier.imePadding()
-                                } else {
-                                    Modifier
-                                },
-                            ),
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Bottom,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         OutlinedTextField(
                             value = state.draft,
@@ -742,61 +735,6 @@ private fun BoxScope.TransferOverlayCard(
                             IconButton(onClick = onShare) {
                                 Icon(Icons.Outlined.Share, contentDescription = "Поделиться")
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ThreadSummaryRow(
-    summaries: List<MeshThreadSummary>,
-    messages: Map<String, org.expert.link.mesh.contract.model.MeshChatMessage>,
-    onOpenThread: (String) -> Unit,
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(24.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "Треды",
-                modifier = Modifier.padding(horizontal = 16.dp),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(summaries, key = { it.rootMessageId }) { summary ->
-                    Surface(
-                        onClick = { onOpenThread(summary.rootMessageId) },
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        shape = RoundedCornerShape(22.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .widthIn(max = 220.dp)
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                text = messages[summary.rootMessageId]?.body ?: "Сообщение",
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = "${summary.replyCount} ответов",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
                         }
                     }
                 }

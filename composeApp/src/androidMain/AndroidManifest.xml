@@ -15,6 +15,8 @@
         android:label="Expert Link"
         android:usesCleartextTraffic="true"
         android:supportsRtl="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -26,6 +28,7 @@
                 android:resource="@xml/expert_link_file_paths" />
         </provider>
         <activity
+            android:windowSoftInputMode="adjustResize"
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

@@ -31,8 +31,6 @@ enum class ProfileTab(val title: String) {
     CHATS("Чаты"),
     NETWORK("Сеть"),
     CONTACTS("Контакты"),
-    TRANSFERS("Файлы"),
-    CALLS("Звонки"),
     METRICS("Метрики"),
     SETTINGS("Настройки"),
 }
@@ -200,18 +198,6 @@ class ProfileComponent(
         selectTab(ProfileTab.CONTACTS)
     }
 
-    fun prepareTransfer(peerId: String) {
-        transfersStore.prefill(targetPeerId = peerId)
-        _state.update { it.copy(selectedTab = ProfileTab.TRANSFERS) }
-        showMessage("Контакт выбран")
-    }
-
-    fun prepareCall(peerId: String) {
-        callsStore.prefill(targetPeerId = peerId)
-        _state.update { it.copy(selectedTab = ProfileTab.CALLS) }
-        showMessage("Контакт выбран")
-    }
-
     private suspend fun refreshTab(tab: ProfileTab) {
         when (tab) {
             ProfileTab.OVERVIEW -> homeStore.refresh()
@@ -219,8 +205,6 @@ class ProfileComponent(
             ProfileTab.CHATS -> chatsStore.refresh()
             ProfileTab.NETWORK -> nearbyStore.refresh()
             ProfileTab.CONTACTS -> contactsStore.refresh()
-            ProfileTab.TRANSFERS -> transfersStore.refresh()
-            ProfileTab.CALLS -> callsStore.refresh()
             ProfileTab.METRICS -> diagnosticsStore.refresh()
             ProfileTab.SETTINGS -> settingsStore.syncFromSession()
         }

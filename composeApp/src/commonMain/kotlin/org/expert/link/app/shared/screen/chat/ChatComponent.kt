@@ -669,9 +669,7 @@ class ChatComponent(
     ): ThreadSnapshot {
         val summary = node.threadSummary(conversationId, rootMessageId)
         val detailedMessages = node.threadMessagesDetailed(conversationId, rootMessageId)
-        val messages = if (detailedMessages.isNotEmpty()) {
-            detailedMessages
-        } else {
+        val messages = detailedMessages.ifEmpty {
             val threadId = summary?.threadId ?: "thread-$rootMessageId"
             node.threadMessages(conversationId, rootMessageId).map { message ->
                 MeshThreadMessage(

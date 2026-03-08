@@ -38,15 +38,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
+import com.arkivanov.essenty.backhandler.BackCallback
+import com.arkivanov.essenty.backhandler.BackHandler
 import org.expert.link.app.shared.screen.components.initials
-import org.expert.link.app.shared.ui.screens.CallScreen
 import org.expert.link.app.shared.ui.screens.ChatsScreen
 import org.expert.link.app.shared.ui.screens.ContactsScreen
 import org.expert.link.app.shared.ui.screens.DiagnosticsScreen
 import org.expert.link.app.shared.ui.screens.HomeScreen
 import org.expert.link.app.shared.ui.screens.NearbyScreen
 import org.expert.link.app.shared.ui.screens.SettingsScreen
-import org.expert.link.app.shared.ui.screens.TransfersScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,7 +118,6 @@ fun ProfileScreen(component: ProfileComponent) {
                         onPairing = component::openInvite,
                         onContacts = { component.selectTab(ProfileTab.CONTACTS) },
                         onChats = { component.selectTab(ProfileTab.CHATS) },
-                        onCalls = { component.selectTab(ProfileTab.CALLS) },
                         onDiagnostics = { component.selectTab(ProfileTab.METRICS) },
                         onSettings = { component.selectTab(ProfileTab.SETTINGS) },
                     )
@@ -142,16 +141,8 @@ fun ProfileScreen(component: ProfileComponent) {
                     ProfileTab.CONTACTS -> ContactsScreen(
                         store = component.contactsStore,
                         onOpenChat = component::openChatForPeer,
-                        onStartCall = component::prepareCall,
-                        onSendFile = component::prepareTransfer,
                         onShowMessage = component::showMessage,
                     )
-                    ProfileTab.TRANSFERS -> TransfersScreen(
-                        store = component.transfersStore,
-                        services = component.services,
-                        onShowMessage = component::showMessage,
-                    )
-                    ProfileTab.CALLS -> CallScreen(component.callsStore)
                     ProfileTab.METRICS -> DiagnosticsScreen(component.diagnosticsStore)
                     ProfileTab.SETTINGS -> SettingsScreen(
                         sessionState = sessionState,
