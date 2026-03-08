@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
@@ -146,7 +147,6 @@ fun HomeScreen(
     onPairing: () -> Unit,
     onContacts: () -> Unit,
     onChats: () -> Unit,
-    onCalls: () -> Unit,
     onDiagnostics: () -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -198,7 +198,12 @@ fun HomeScreen(
                                     tone = if (it.enabled) ChipTone.SUCCESS else ChipTone.WARNING,
                                 )
                             }
-                            state.relayMode?.let { BadgeChip("Режим: ${it.asUiText()}", ChipTone.INFO) }
+                            state.relayMode?.let {
+                                BadgeChip(
+                                    "Режим: ${it.asUiText()}",
+                                    ChipTone.INFO
+                                )
+                            }
                         }
                         state.error?.let { StatusBanner(it, ChipTone.ERROR) }
                     }
@@ -207,17 +212,33 @@ fun HomeScreen(
         }
         item {
             state.topology?.let { topology ->
-                SectionCard(title = "Состояние сети", subtitle = "Роль узла и устойчивость маршрутов") {
+                SectionCard(
+                    title = "Состояние сети",
+                    subtitle = "Роль узла и устойчивость маршрутов"
+                ) {
                     InfoRow("Связность", topology.connectivityMode.asUiText())
                     InfoRow("Роль", topology.networkRoleState.localRole.asUiText())
-                    InfoRow("Хост", topology.networkRoleState.currentHostPeerId?.shortId(12) ?: "не выбран")
-                    InfoRow("Failover", if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет")
-                    InfoRow("Нездоровые маршруты", topology.routeHealth.count { it.state != org.expert.link.mesh.contract.model.MeshRouteHealthState.HEALTHY }.toString())
+                    InfoRow(
+                        "Хост",
+                        topology.networkRoleState.currentHostPeerId?.shortId(12) ?: "не выбран"
+                    )
+                    InfoRow(
+                        "Failover",
+                        if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет"
+                    )
+                    InfoRow(
+                        "Нездоровые маршруты",
+                        topology.routeHealth.count { it.state != org.expert.link.mesh.contract.model.MeshRouteHealthState.HEALTHY }
+                            .toString()
+                    )
                 }
             }
         }
         item {
-            SectionCard(title = "Быстрые действия", subtitle = "Самые частые действия на одном экране") {
+            SectionCard(
+                title = "Быстрые действия",
+                subtitle = "Самые частые действия на одном экране"
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick = onNearby) { Text("Найти узлы") }
                     FilledTonalButton(onClick = onPairing) { Text("Сопряжение") }
@@ -227,7 +248,6 @@ fun HomeScreen(
                     FilledTonalButton(onClick = onContacts) { Text("Контакты") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onCalls) { Text("Звонок") }
                     OutlinedButton(onClick = onDiagnostics) { Text("Диагностика") }
                     OutlinedButton(onClick = onSettings) { Text("Настройки") }
                 }
@@ -254,7 +274,9 @@ fun PairingScreen(
 ) {
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
-    val qrCode = remember(state.invite) { state.invite.takeIf { it.isNotBlank() }?.let(services::buildQrCode) }
+    val qrCode = remember(state.invite) {
+        state.invite.takeIf { it.isNotBlank() }?.let(services::buildQrCode)
+    }
     PollingEffect(key = "pairing") { store.refresh() }
     LazyColumn(
         modifier = Modifier.screenBounds(),
@@ -275,7 +297,11 @@ fun PairingScreen(
                                     scope.launch {
                                         services.copyText("Приглашение", state.invite)
                                             .onSuccess { onShowMessage("Скопировано") }
-                                            .onFailure { onShowMessage(it.message ?: "Не удалось скопировать") }
+                                            .onFailure {
+                                                onShowMessage(
+                                                    it.message ?: "Не удалось скопировать"
+                                                )
+                                            }
                                     }
                                 }) { Text("Копировать") }
                             }
@@ -284,16 +310,31 @@ fun PairingScreen(
                                     scope.launch {
                                         services.shareText("Приглашение Expert Link", state.invite)
                                             .onSuccess { onShowMessage("Окно отправки открыто") }
-                                            .onFailure { onShowMessage(it.message ?: "Не удалось открыть отправку") }
+                                            .onFailure {
+                                                onShowMessage(
+                                                    it.message ?: "Не удалось открыть отправку"
+                                                )
+                                            }
                                     }
                                 }) { Text("Поделиться") }
                             }
                         }
                         when {
-                            state.loading -> StatusBanner("Готовим новое приглашение", ChipTone.INFO)
-                            state.invite.isBlank() -> Text("Нажмите «Создать приглашение», чтобы показать QR или скопировать строку.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            state.loading -> StatusBanner(
+                                "Готовим новое приглашение",
+                                ChipTone.INFO
+                            )
+
+                            state.invite.isBlank() -> Text(
+                                "Нажмите «Создать приглашение», чтобы показать QR или скопировать строку.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
                             else -> {
-                                StatusBanner("Приглашение действует недолго. Лучше использовать его сразу.", ChipTone.INFO)
+                                StatusBanner(
+                                    "Приглашение действует недолго. Лучше использовать его сразу.",
+                                    ChipTone.INFO
+                                )
                                 MonospaceValue(state.invite)
                             }
                         }
@@ -339,7 +380,9 @@ fun PairingScreen(
                                                 }
                                             }
                                             .onFailure { error ->
-                                                onShowMessage(error.message ?: "Не удалось запустить сканер")
+                                                onShowMessage(
+                                                    error.message ?: "Не удалось запустить сканер"
+                                                )
                                             }
                                     }
                                 },
@@ -348,7 +391,10 @@ fun PairingScreen(
                             OutlinedButton(onClick = { store.updateInviteInput("") }) { Text("Ввести вручную") }
                         }
                         if (!services.capabilities.canScanQr) {
-                            Text("На этой платформе сканер недоступен, используйте ручной ввод.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "На этой платформе сканер недоступен, используйте ручной ввод.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                     SectionCard(title = "Что дальше") {
@@ -363,7 +409,10 @@ fun PairingScreen(
                 first = {
                     SectionCard(title = "Активные попытки") {
                         if (state.sessions.isEmpty()) {
-                            Text("Сейчас нет активных попыток сопряжения.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Сейчас нет активных попыток сопряжения.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else {
                             state.sessions.forEach { session ->
                                 Row(
@@ -372,12 +421,22 @@ fun PairingScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(session.remoteDisplayName ?: session.remotePeerId?.shortId(12) ?: session.sessionId.shortId(12), fontWeight = FontWeight.SemiBold)
-                                        Text(session.expiresAt.asUiTime(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(
+                                            session.remoteDisplayName
+                                                ?: session.remotePeerId?.shortId(12)
+                                                ?: session.sessionId.shortId(12),
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            session.expiresAt.asUiTime(),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                    BadgeChip(session.trustState.asUiText(), session.trustState.let {
-                                        if (it.name == "TRUSTED") ChipTone.SUCCESS else ChipTone.INFO
-                                    })
+                                    BadgeChip(
+                                        session.trustState.asUiText(),
+                                        session.trustState.let {
+                                            if (it.name == "TRUSTED") ChipTone.SUCCESS else ChipTone.INFO
+                                        })
                                 }
                             }
                         }
@@ -386,10 +445,17 @@ fun PairingScreen(
                 second = {
                     SectionCard(title = "Доверенные контакты") {
                         if (state.peers.isEmpty()) {
-                            Text("После сопряжения контакты появятся здесь.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "После сопряжения контакты появятся здесь.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else {
                             state.peers.forEach { peer ->
-                                InfoRow(peer.identity.displayName.ifBlank { peer.identity.peerId.shortId(12) }, peer.trustState.asUiText())
+                                InfoRow(peer.identity.displayName.ifBlank {
+                                    peer.identity.peerId.shortId(
+                                        12
+                                    )
+                                }, peer.trustState.asUiText())
                             }
                         }
                     }
@@ -408,7 +474,8 @@ fun NearbyScreen(
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
     val routes = remember(state.routes) { state.routes.associateBy { it.targetPeerId } }
-    val routeHealth = remember(state.routeHealth) { state.routeHealth.associateBy { it.targetPeerId } }
+    val routeHealth =
+        remember(state.routeHealth) { state.routeHealth.associateBy { it.targetPeerId } }
     PollingEffect(key = "nearby") { store.refresh() }
     LazyColumn(
         modifier = Modifier.screenBounds(),
@@ -418,19 +485,42 @@ fun NearbyScreen(
         item {
             ResponsiveColumns(
                 first = {
-                    SectionCard(title = "Узлы рядом", subtitle = "Найдите соседние устройства в локальной сети") {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { scope.launch { store.announcePresence() } }) { Text("Найти узлы") }
-                            OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
-                            OutlinedButton(onClick = { scope.launch { store.forceTopologyRefresh() } }) { Text("Пересобрать сеть") }
+                    SectionCard(
+                        title = "Узлы рядом",
+                        subtitle = "Найдите соседние устройства в локальной сети"
+                    ) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            item {
+                                Button(onClick = { scope.launch { store.announcePresence() } }) {
+                                    Text(
+                                        "Найти узлы"
+                                    )
+                                }
+                                OutlinedButton(onClick = { scope.launch { store.refresh() } }) {
+                                    Text(
+                                        "Обновить"
+                                    )
+                                }
+                                OutlinedButton(onClick = { scope.launch { store.forceTopologyRefresh() } }) {
+                                    Text(
+                                        "Пересобрать сеть"
+                                    )
+                                }
+                            }
                         }
-                        Text("Сначала нажмите «Найти узлы», затем выберите устройство из списка ниже.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Сначала нажмите «Найти узлы», затем выберите устройство из списка ниже.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         state.message?.let { StatusBanner(it, ChipTone.SUCCESS) }
                         state.error?.let { StatusBanner(it, ChipTone.ERROR) }
                     }
                 },
                 second = {
-                    SectionCard(title = "Поиск по ID", subtitle = "Если знаете ID узла, можно запросить маршрут напрямую") {
+                    SectionCard(
+                        title = "Поиск по ID",
+                        subtitle = "Если знаете ID узла, можно запросить маршрут напрямую"
+                    ) {
                         OutlinedTextField(
                             value = state.queryPeerId,
                             onValueChange = store::updateQueryPeerId,
@@ -452,7 +542,10 @@ fun NearbyScreen(
                     InfoRow("Текущий хост", hostRole.currentHostPeerId?.shortId(12) ?: "не выбран")
                     InfoRow("Хост доступен", if (hostRole.hostReachable) "да" else "нет")
                     InfoRow("Failover", if (hostRole.failoverInProgress) "в процессе" else "нет")
-                } ?: Text("Снимок сети ещё не получен.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } ?: Text(
+                    "Снимок сети ещё не получен.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 state.connectivityStrategy?.let { strategy ->
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     InfoRow("Стратегия", strategy.routeMode.asUiText())
@@ -462,7 +555,10 @@ fun NearbyScreen(
             }
         }
         item {
-            SectionCard(title = "Ручной узел", subtitle = "Используйте, если авто-поиск не нашёл устройство") {
+            SectionCard(
+                title = "Ручной узел",
+                subtitle = "Используйте, если авто-поиск не нашёл устройство"
+            ) {
                 OutlinedTextField(
                     value = state.manualPeerId,
                     onValueChange = store::updateManualPeerId,
@@ -491,39 +587,60 @@ fun NearbyScreen(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { scope.launch { store.rememberPeerEndpoint() } }) { Text("Сохранить") }
-                    OutlinedButton(onClick = { scope.launch { store.forgetPeerEndpoint() } }) { Text("Удалить") }
+                    OutlinedButton(onClick = { scope.launch { store.forgetPeerEndpoint() } }) {
+                        Text(
+                            "Удалить"
+                        )
+                    }
                 }
             }
         }
         item {
             SectionCard(title = "Список узлов") {
                 if (state.nearby.isEmpty()) {
-                    Text("Пока ничего не найдено. Проверьте, что второй узел уже запущен и находится в той же сети.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Пока ничего не найдено. Проверьте, что второй узел уже запущен и находится в той же сети.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     state.nearby.forEach { peer ->
                         val knownName = state.trustedPeerNames[peer.peerId]
                         val route = routes[peer.peerId]
                         Card {
-                            Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text(knownName ?: peer.peerId.shortId(14), fontWeight = FontWeight.SemiBold)
-                                Text("${peer.endpoint.host}:${peer.endpoint.port}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    BadgeChip(
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    knownName ?: peer.peerId.shortId(14),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "${peer.endpoint.host}:${peer.endpoint.port}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
                                         text = if (peer.peerId in state.trustedPeerIds) "Доверен" else "Без пары",
-                                        tone = if (peer.peerId in state.trustedPeerIds) ChipTone.SUCCESS else ChipTone.WARNING,
                                     )
-                                    BadgeChip(text = peer.source.asUiText(), tone = ChipTone.INFO)
-                                    route?.let { BadgeChip(text = it.routeMode.asUiText(), tone = it.routeMode.asTone()) }
-                                    routeHealth[peer.peerId]?.let { health ->
+                                    Text(text = peer.source.asUiText())
+                                    route?.let {
                                         BadgeChip(
-                                            text = "Состояние: ${health.state.asUiText()}",
-                                            tone = if (health.state == org.expert.link.mesh.contract.model.MeshRouteHealthState.HEALTHY) ChipTone.SUCCESS else ChipTone.WARNING,
+                                            text = it.routeMode.asUiText(),
+                                            tone = it.routeMode.asTone()
+                                        )
+                                    }
+                                    routeHealth[peer.peerId]?.let { health ->
+                                        Text(
+                                            text = "Состояние: ${health.state.asUiText()}"
                                         )
                                     }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     if (peer.peerId in state.trustedPeerIds) {
-                                        FilledTonalButton(onClick = { onOpenChat(peer.peerId) }) { Text("Чат") }
+                                        FilledTonalButton(onClick = { onOpenChat(peer.peerId) }) {
+                                            Text("Чат")
+                                        }
                                     } else {
                                         FilledTonalButton(onClick = onPairing) { Text("Сопряжение") }
                                     }
@@ -544,14 +661,23 @@ fun NearbyScreen(
             SectionCard(title = "Маршрут") {
                 val plan = state.routingPlan
                 if (plan == null) {
-                    Text("Выберите узел из списка или введите ID, чтобы увидеть путь доставки.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Выберите узел из списка или введите ID, чтобы увидеть путь доставки.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     BadgeChip(plan.routeMode.asUiText(), plan.routeMode.asTone())
                     if (plan.hops.isEmpty()) {
-                        Text("Пока нет подробного списка hop-узлов.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Пока нет подробного списка hop-узлов.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     } else {
                         plan.hops.forEach { hop ->
-                            InfoRow(hop.peerId.shortId(10), "${hop.endpoint.host}:${hop.endpoint.port}")
+                            InfoRow(
+                                hop.peerId.shortId(10),
+                                "${hop.endpoint.host}:${hop.endpoint.port}"
+                            )
                         }
                     }
                 }
@@ -564,8 +690,6 @@ fun NearbyScreen(
 fun ContactsScreen(
     store: ContactsStore,
     onOpenChat: (String) -> Unit,
-    onStartCall: (String) -> Unit,
-    onSendFile: (String) -> Unit,
     onShowMessage: (String) -> Unit,
 ) {
     val state by store.state.collectAsState()
@@ -597,26 +721,34 @@ fun ContactsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            SectionCard(title = "Доверенные контакты", subtitle = "Отсюда удобнее всего начать чат, звонок или передачу файла") {
+            SectionCard(
+                title = "Доверенные контакты",
+                subtitle = "Отсюда удобнее всего начать чат, звонок или передачу файла"
+            ) {
                 if (state.peers.isEmpty()) {
-                    Text("Пока нет доверенных контактов. Сначала выполните сопряжение.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Пока нет доверенных контактов. Сначала выполните сопряжение.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
-                    state.peers.sortedBy { it.identity.displayName.ifBlank { it.identity.peerId } }.forEach { peer ->
-                        ContactRow(
-                            peer = peer,
-                            onOpenChat = { onOpenChat(peer.identity.peerId) },
-                            onStartCall = { onStartCall(peer.identity.peerId) },
-                            onSendFile = { onSendFile(peer.identity.peerId) },
-                            onBlock = { pendingBlock = peer },
-                        )
-                    }
+                    state.peers.sortedBy { it.identity.displayName.ifBlank { it.identity.peerId } }
+                        .forEach { peer ->
+                            ContactRow(
+                                peer = peer,
+                                onOpenChat = { onOpenChat(peer.identity.peerId) },
+                                onBlock = { pendingBlock = peer },
+                            )
+                        }
                 }
             }
         }
         item {
             SectionCard(title = "Заблокированные") {
                 if (state.blockedPeers.isEmpty()) {
-                    Text("Список блокировок пуст.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Список блокировок пуст.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     state.blockedPeers.forEach { blocked ->
                         Row(
@@ -626,7 +758,10 @@ fun ContactsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(blocked.peerId.shortId(12), fontWeight = FontWeight.SemiBold)
-                                Text(blocked.reason, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    blocked.reason,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             OutlinedButton(onClick = {
                                 scope.launch {
@@ -646,15 +781,23 @@ fun ContactsScreen(
 private fun ContactRow(
     peer: MeshPairedPeer,
     onOpenChat: () -> Unit,
-    onStartCall: () -> Unit,
-    onSendFile: () -> Unit,
     onBlock: () -> Unit,
 ) {
     Card {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(peer.identity.displayName.ifBlank { peer.identity.peerId.shortId(12) }, fontWeight = FontWeight.SemiBold)
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                peer.identity.displayName.ifBlank { peer.identity.peerId.shortId(12) },
+                fontWeight = FontWeight.SemiBold
+            )
             SelectionContainer {
-                Text(peer.identity.peerId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    peer.identity.peerId,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BadgeChip(text = peer.trustState.asUiText(), tone = ChipTone.SUCCESS)
@@ -662,8 +805,6 @@ private fun ContactRow(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = onOpenChat) { Text("Чат") }
-                OutlinedButton(onClick = onSendFile) { Text("Файл") }
-                OutlinedButton(onClick = onStartCall) { Text("Звонок") }
                 OutlinedButton(onClick = onBlock) { Text("Блок") }
             }
         }
@@ -681,14 +822,18 @@ fun ChatsScreen(
     val scope = rememberCoroutineScope()
     PollingEffect(key = "chats") { store.refresh() }
     val peerMap = remember(state.peers) { state.peers.associateBy { it.identity.peerId } }
-    val conversations = remember(state.conversations) { state.conversations.sortedByDescending { it.updatedAt } }
+    val conversations =
+        remember(state.conversations) { state.conversations.sortedByDescending { it.updatedAt } }
     LazyColumn(
         modifier = Modifier.screenBounds(),
         contentPadding = PaddingValues(vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            SectionCard(title = "Новый чат", subtitle = "Откройте диалог по ID узла или выберите контакт ниже") {
+            SectionCard(
+                title = "Новый чат",
+                subtitle = "Откройте диалог по ID узла или выберите контакт ниже"
+            ) {
                 OutlinedTextField(
                     value = state.newPeerId,
                     onValueChange = store::updateNewPeerId,
@@ -699,7 +844,9 @@ fun ChatsScreen(
                     Button(onClick = {
                         scope.launch {
                             store.openConversation().onSuccess {
-                                val peerId = it.participantPeerIds.firstOrNull { id -> id != state.localPeerId }.orEmpty()
+                                val peerId =
+                                    it.participantPeerIds.firstOrNull { id -> id != state.localPeerId }
+                                        .orEmpty()
                                 onOpenConversation(it.conversationId, peerId)
                             }
                         }
@@ -714,7 +861,13 @@ fun ChatsScreen(
                                 onClick = {
                                     store.prefillPeerId(peer.identity.peerId)
                                 },
-                                label = { Text(peer.identity.displayName.ifBlank { peer.identity.peerId.shortId(8) }) },
+                                label = {
+                                    Text(peer.identity.displayName.ifBlank {
+                                        peer.identity.peerId.shortId(
+                                            8
+                                        )
+                                    })
+                                },
                             )
                         }
                     }
@@ -723,7 +876,10 @@ fun ChatsScreen(
             }
         }
         item {
-            SectionCard(title = "Новая группа", subtitle = "Создайте групповой чат и добавьте участников") {
+            SectionCard(
+                title = "Новая группа",
+                subtitle = "Создайте групповой чат и добавьте участников"
+            ) {
                 OutlinedTextField(
                     value = state.newGroupTitle,
                     onValueChange = store::updateNewGroupTitle,
@@ -758,19 +914,29 @@ fun ChatsScreen(
         item {
             SectionCard(title = "Чаты") {
                 if (conversations.isEmpty()) {
-                    Text("Диалогов пока нет. Начните с контактов или откройте новый чат по ID.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Диалогов пока нет. Начните с контактов или откройте новый чат по ID.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     conversations.forEachIndexed { index, conversation ->
-                        val peerId = conversation.participantPeerIds.firstOrNull { it != state.localPeerId }.orEmpty()
+                        val peerId =
+                            conversation.participantPeerIds.firstOrNull { it != state.localPeerId }
+                                .orEmpty()
                         val peer = peerMap[peerId]
                         val isGroup = conversation.chatType.name == "GROUP"
-                        val title = if (isGroup) conversation.title else (peer?.identity?.displayName ?: peerId.shortId(12))
+                        val title =
+                            if (isGroup) conversation.title else (peer?.identity?.displayName
+                                ?: peerId.shortId(12))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
                                 Text(title, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     text = "Обновлён ${conversation.updatedAt.asUiTime()}",
@@ -782,14 +948,26 @@ fun ChatsScreen(
                                         tone = if (isGroup) ChipTone.INFO else ChipTone.SUCCESS,
                                     )
                                     if (conversation.unreadCount > 0) {
-                                        BadgeChip("Новых: ${conversation.unreadCount}", ChipTone.WARNING)
+                                        BadgeChip(
+                                            "Новых: ${conversation.unreadCount}",
+                                            ChipTone.WARNING
+                                        )
                                     }
                                 }
                             }
                             if (isGroup) {
-                                FilledTonalButton(onClick = { onOpenGroup(conversation.conversationId) }) { Text("Группа") }
+                                FilledTonalButton(onClick = { onOpenGroup(conversation.conversationId) }) {
+                                    Text(
+                                        "Группа"
+                                    )
+                                }
                             } else {
-                                FilledTonalButton(onClick = { onOpenConversation(conversation.conversationId, peerId) }) { Text("Открыть") }
+                                FilledTonalButton(onClick = {
+                                    onOpenConversation(
+                                        conversation.conversationId,
+                                        peerId
+                                    )
+                                }) { Text("Открыть") }
                             }
                         }
                         if (index < conversations.lastIndex) {
@@ -813,7 +991,10 @@ fun ChatScreen(
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
     var showRouteDetails by remember { mutableStateOf(false) }
-    PollingEffect(key = state.conversationId, enabled = state.conversationId.isNotBlank()) { store.refresh() }
+    PollingEffect(
+        key = state.conversationId,
+        enabled = state.conversationId.isNotBlank()
+    ) { store.refresh() }
     Column(
         modifier = Modifier
             .screenBounds()
@@ -833,9 +1014,16 @@ fun ChatScreen(
                 }
                 if (state.peerId.isNotBlank()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { onSendFile(state.peerId, state.conversationId) }) { Text("Файл") }
+                        FilledTonalButton(onClick = {
+                            onSendFile(
+                                state.peerId,
+                                state.conversationId
+                            )
+                        }) { Text("Файл") }
                         OutlinedButton(onClick = { onStartCall(state.peerId) }) { Text("Звонок") }
-                        OutlinedButton(onClick = { showRouteDetails = !showRouteDetails }) { Text(if (showRouteDetails) "Скрыть маршрут" else "Маршрут") }
+                        OutlinedButton(onClick = {
+                            showRouteDetails = !showRouteDetails
+                        }) { Text(if (showRouteDetails) "Скрыть маршрут" else "Маршрут") }
                     }
                 }
                 if (showRouteDetails) {
@@ -845,7 +1033,12 @@ fun ChatScreen(
                 }
             } else if (state.peerId.isNotBlank()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { onSendFile(state.peerId, state.conversationId) }) { Text("Файл") }
+                    FilledTonalButton(onClick = {
+                        onSendFile(
+                            state.peerId,
+                            state.conversationId
+                        )
+                    }) { Text("Файл") }
                     OutlinedButton(onClick = { onStartCall(state.peerId) }) { Text("Звонок") }
                 }
             }
@@ -860,8 +1053,14 @@ fun ChatScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Сообщение ${thread.rootMessageId.shortId(8)}", fontWeight = FontWeight.SemiBold)
-                            Text("Ответов: ${thread.replyCount}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Сообщение ${thread.rootMessageId.shortId(8)}",
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Ответов: ${thread.replyCount}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         OutlinedButton(onClick = { onOpenThread(thread.rootMessageId) }) { Text("Открыть") }
                     }
@@ -875,7 +1074,10 @@ fun ChatScreen(
             ) {
                 if (state.messages.isEmpty()) {
                     item {
-                        Text("Сообщений пока нет. Отправьте первое сообщение ниже.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Сообщений пока нет. Отправьте первое сообщение ниже.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 } else {
                     items(state.messages) { message ->
@@ -885,10 +1087,19 @@ fun ChatScreen(
                             horizontalAlignment = if (own) Alignment.End else Alignment.Start,
                         ) {
                             Card {
-                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     Text(message.body)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        BadgeChip(message.deliveryStatus.asUiText(), message.deliveryStatus.asTone())
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        BadgeChip(
+                                            message.deliveryStatus.asUiText(),
+                                            message.deliveryStatus.asTone()
+                                        )
                                         Text(
                                             text = message.createdAt.asUiTime(),
                                             style = MaterialTheme.typography.bodySmall,
@@ -896,15 +1107,26 @@ fun ChatScreen(
                                         )
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedButton(onClick = { onOpenThread(message.messageId) }) { Text("Тред") }
+                                        OutlinedButton(onClick = { onOpenThread(message.messageId) }) {
+                                            Text(
+                                                "Тред"
+                                            )
+                                        }
                                         if (message.threadReplyCount > 0) {
-                                            BadgeChip("Ответов: ${message.threadReplyCount}", ChipTone.INFO)
+                                            BadgeChip(
+                                                "Ответов: ${message.threadReplyCount}",
+                                                ChipTone.INFO
+                                            )
                                         }
                                     }
                                 }
                             }
                             if (message.deliveryStatus.name == "FAILED") {
-                                OutlinedButton(onClick = { scope.launch { store.resend(message) } }) { Text("Повторить") }
+                                OutlinedButton(onClick = { scope.launch { store.resend(message) } }) {
+                                    Text(
+                                        "Повторить"
+                                    )
+                                }
                             }
                         }
                     }
@@ -919,7 +1141,10 @@ fun ChatScreen(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Button(onClick = { scope.launch { store.send() } }) { Text("Отправить") }
                 if (state.receipts.isNotEmpty()) {
                     Text(
@@ -995,7 +1220,10 @@ fun GroupScreen(
             SectionCard(title = "Участники") {
                 val group = state.group
                 if (group == null || group.members.isEmpty()) {
-                    Text("Список участников пуст.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Список участников пуст.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     group.members.forEach { member ->
                         Row(
@@ -1004,11 +1232,23 @@ fun GroupScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(member.displayName.ifBlank { member.peerId.shortId(10) }, fontWeight = FontWeight.SemiBold)
-                                Text(member.role.name, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    member.displayName.ifBlank { member.peerId.shortId(10) },
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    member.role.name,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             if (member.role.name != "OWNER") {
-                                OutlinedButton(onClick = { scope.launch { store.removeParticipant(member.peerId) } }) { Text("Удалить") }
+                                OutlinedButton(onClick = {
+                                    scope.launch {
+                                        store.removeParticipant(
+                                            member.peerId
+                                        )
+                                    }
+                                }) { Text("Удалить") }
                             }
                         }
                     }
@@ -1021,7 +1261,10 @@ fun GroupScreen(
                     Text("Событий пока нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     state.events.forEach { event ->
-                        InfoRow(event.eventType.name, "${event.text} • ${event.createdAt.asUiTime()}")
+                        InfoRow(
+                            event.eventType.name,
+                            "${event.text} • ${event.createdAt.asUiTime()}"
+                        )
                     }
                 }
             }
@@ -1044,9 +1287,17 @@ fun GroupScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(message.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(message.createdAt.asUiTime(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    message.createdAt.asUiTime(),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            OutlinedButton(onClick = { onOpenThread(state.chatId, message.messageId) }) { Text("Тред") }
+                            OutlinedButton(onClick = {
+                                onOpenThread(
+                                    state.chatId,
+                                    message.messageId
+                                )
+                            }) { Text("Тред") }
                         }
                     }
                 }
@@ -1059,7 +1310,10 @@ fun GroupScreen(
 fun ThreadScreen(store: ThreadStore) {
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
-    PollingEffect(key = "${state.chatId}:${state.rootMessageId}", enabled = state.chatId.isNotBlank()) { store.refresh() }
+    PollingEffect(
+        key = "${state.chatId}:${state.rootMessageId}",
+        enabled = state.chatId.isNotBlank()
+    ) { store.refresh() }
     Column(
         modifier = Modifier
             .screenBounds()
@@ -1083,15 +1337,29 @@ fun ThreadScreen(store: ThreadStore) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (state.messages.isEmpty()) {
-                    item { Text("Пока нет ответов в этом треде.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    item {
+                        Text(
+                            "Пока нет ответов в этом треде.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 } else {
                     items(state.messages) { message ->
                         Card {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
                                 Text(message.body)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    BadgeChip(message.deliveryStatus.asUiText(), message.deliveryStatus.asTone())
-                                    Text(message.createdAt.asUiTime(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    BadgeChip(
+                                        message.deliveryStatus.asUiText(),
+                                        message.deliveryStatus.asTone()
+                                    )
+                                    Text(
+                                        message.createdAt.asUiTime(),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }
@@ -1128,8 +1396,22 @@ fun TransfersScreen(
     val filteredTransfers = remember(state.transfers, filter) {
         when (filter) {
             TransferFilter.ALL -> state.transfers.sortedByDescending { it.updatedAt }
-            TransferFilter.ACTIVE -> state.transfers.filter { it.status.name in setOf("OFFERED", "ACCEPTED", "IN_PROGRESS", "PAUSED") }.sortedByDescending { it.updatedAt }
-            TransferFilter.DONE -> state.transfers.filter { it.status.name in setOf("COMPLETED", "FAILED", "CANCELLED") }.sortedByDescending { it.updatedAt }
+            TransferFilter.ACTIVE -> state.transfers.filter {
+                it.status.name in setOf(
+                    "OFFERED",
+                    "ACCEPTED",
+                    "IN_PROGRESS",
+                    "PAUSED"
+                )
+            }.sortedByDescending { it.updatedAt }
+
+            TransferFilter.DONE -> state.transfers.filter {
+                it.status.name in setOf(
+                    "COMPLETED",
+                    "FAILED",
+                    "CANCELLED"
+                )
+            }.sortedByDescending { it.updatedAt }
         }
     }
     PollingEffect(key = "transfers") { store.refresh() }
@@ -1195,7 +1477,11 @@ fun TransfersScreen(
                                             onShowMessage("Файл выбран")
                                         }
                                     }
-                                    .onFailure { onShowMessage(it.message ?: "Не удалось выбрать файл") }
+                                    .onFailure {
+                                        onShowMessage(
+                                            it.message ?: "Не удалось выбрать файл"
+                                        )
+                                    }
                             }
                         }) { Text("Выбрать файл") }
                     }
@@ -1208,11 +1494,17 @@ fun TransfersScreen(
             SectionCard(title = "Передачи") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TransferFilter.entries.forEach { item ->
-                        FilterChip(selected = filter == item, onClick = { filter = item }, label = { Text(item.title) })
+                        FilterChip(
+                            selected = filter == item,
+                            onClick = { filter = item },
+                            label = { Text(item.title) })
                     }
                 }
                 if (filteredTransfers.isEmpty()) {
-                    Text("Передач пока нет. Здесь появится история отправки и получения файлов.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Передач пока нет. Здесь появится история отправки и получения файлов.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     filteredTransfers.forEach { transfer ->
                         TransferRow(
@@ -1239,17 +1531,32 @@ private fun TransferRow(
     onCancel: () -> Unit,
 ) {
     Card {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Text(transfer.descriptor.fileName, fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BadgeChip(text = transfer.status.asUiText(), tone = transfer.status.asTone())
-                BadgeChip(text = if (transfer.direction.name == "OUTGOING") "Исходящая" else "Входящая", tone = ChipTone.INFO)
+                BadgeChip(
+                    text = if (transfer.direction.name == "OUTGOING") "Исходящая" else "Входящая",
+                    tone = ChipTone.INFO
+                )
             }
-            LinearProgressIndicator(progress = { transfer.progress() }, modifier = Modifier.fillMaxWidth())
+            LinearProgressIndicator(
+                progress = { transfer.progress() },
+                modifier = Modifier.fillMaxWidth()
+            )
             InfoRow("Прогресс", "${(transfer.progress() * 100).toInt()}%")
             InfoRow("Кому", transfer.recipientPeerId.shortId(10))
             InfoRow("Размер", "${transfer.descriptor.sizeBytes} Б")
-            transfer.localPath?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            transfer.localPath?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (transfer.status.name != "COMPLETED") {
                     OutlinedButton(onClick = onResume) { Text("Продолжить") }
@@ -1273,7 +1580,10 @@ fun CallScreen(store: CallsStore) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            SectionCard(title = "Новый звонок", subtitle = "Аудио, видео и групповые звонки через backend-контракт") {
+            SectionCard(
+                title = "Новый звонок",
+                subtitle = "Аудио, видео и групповые звонки через backend-контракт"
+            ) {
                 OutlinedTextField(
                     value = state.targetPeerId,
                     onValueChange = store::updateTargetPeerId,
@@ -1298,8 +1608,16 @@ fun CallScreen(store: CallsStore) {
                     OutlinedButton(onClick = { scope.launch { store.startCallLegacy() } }) { Text("Базовый") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { scope.launch { store.startGroupAudioCall() } }) { Text("Группа аудио") }
-                    OutlinedButton(onClick = { scope.launch { store.startGroupVideoCall() } }) { Text("Группа видео") }
+                    OutlinedButton(onClick = { scope.launch { store.startGroupAudioCall() } }) {
+                        Text(
+                            "Группа аудио"
+                        )
+                    }
+                    OutlinedButton(onClick = { scope.launch { store.startGroupVideoCall() } }) {
+                        Text(
+                            "Группа видео"
+                        )
+                    }
                 }
                 state.message?.let { StatusBanner(it, ChipTone.SUCCESS) }
                 state.error?.let { StatusBanner(it, ChipTone.ERROR) }
@@ -1308,7 +1626,10 @@ fun CallScreen(store: CallsStore) {
         item {
             SectionCard(title = "Входящие") {
                 if (state.incomingCalls.isEmpty()) {
-                    Text("Входящих звонков нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Входящих звонков нет.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     state.incomingCalls.sortedByDescending { it.updatedAt }.forEach { call ->
                         CallRow(
@@ -1316,7 +1637,8 @@ fun CallScreen(store: CallsStore) {
                             participants = state.participantsByCall[call.callId].orEmpty(),
                             mediaState = state.mediaByCall[call.callId],
                             mediaStats = state.mediaStatsByCall[call.callId],
-                            lastEvent = state.eventsByCall[call.callId].orEmpty().lastOrNull()?.eventType?.name,
+                            lastEvent = state.eventsByCall[call.callId].orEmpty()
+                                .lastOrNull()?.eventType?.name,
                             onAccept = { scope.launch { store.accept(call) } },
                             onReject = { scope.launch { store.reject(call) } },
                             onJoin = { scope.launch { store.join(call) } },
@@ -1334,7 +1656,10 @@ fun CallScreen(store: CallsStore) {
         item {
             SectionCard(title = "Текущие звонки") {
                 if (state.sessions.isEmpty()) {
-                    Text("Активных звонков нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Активных звонков нет.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 } else {
                     state.sessions.sortedByDescending { it.updatedAt }.forEach { call ->
                         CallRow(
@@ -1342,7 +1667,8 @@ fun CallScreen(store: CallsStore) {
                             participants = state.participantsByCall[call.callId].orEmpty(),
                             mediaState = state.mediaByCall[call.callId],
                             mediaStats = state.mediaStatsByCall[call.callId],
-                            lastEvent = state.eventsByCall[call.callId].orEmpty().lastOrNull()?.eventType?.name,
+                            lastEvent = state.eventsByCall[call.callId].orEmpty()
+                                .lastOrNull()?.eventType?.name,
                             onAccept = { scope.launch { store.accept(call) } },
                             onReject = { scope.launch { store.reject(call) } },
                             onJoin = { scope.launch { store.join(call) } },
@@ -1378,12 +1704,21 @@ private fun CallRow(
     onHangup: () -> Unit,
 ) {
     Card {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Text(call.callId.shortId(12), fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 BadgeChip(text = call.status.asUiText(), tone = call.status.asTone())
-                BadgeChip(text = if (call.callType.name == "VIDEO") "Видео" else "Аудио", tone = ChipTone.INFO)
-                BadgeChip(text = if (call.callScope.name == "GROUP") "Группа" else "1:1", tone = ChipTone.INFO)
+                BadgeChip(
+                    text = if (call.callType.name == "VIDEO") "Видео" else "Аудио",
+                    tone = ChipTone.INFO
+                )
+                BadgeChip(
+                    text = if (call.callScope.name == "GROUP") "Группа" else "1:1",
+                    tone = ChipTone.INFO
+                )
                 BadgeChip(text = call.updatedAt.asUiTime(), tone = ChipTone.INFO)
             }
             InfoRow("С кем", call.recipientPeerId.shortId(10))
@@ -1408,7 +1743,11 @@ private fun CallRow(
                 ResponsiveColumns(
                     first = {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Вы", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Вы",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             CallVideoSurface(
                                 callId = call.callId,
                                 peerId = null,
@@ -1420,7 +1759,11 @@ private fun CallRow(
                     second = {
                         val remotePeerId = mediaState?.peers?.firstOrNull()?.peerId
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Собеседник", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Собеседник",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             CallVideoSurface(
                                 callId = call.callId,
                                 peerId = remotePeerId,
@@ -1436,7 +1779,15 @@ private fun CallRow(
                     FilledTonalButton(onClick = onAccept) { Text("Принять") }
                     OutlinedButton(onClick = onReject) { Text("Отклонить") }
                 }
-                if (call.callScope.name == "GROUP" && call.status.name in setOf("INCOMING", "RINGING", "ACCEPTED", "CONNECTING", "CONNECTED", "ACTIVE")) {
+                if (call.callScope.name == "GROUP" && call.status.name in setOf(
+                        "INCOMING",
+                        "RINGING",
+                        "ACCEPTED",
+                        "CONNECTING",
+                        "CONNECTED",
+                        "ACTIVE"
+                    )
+                ) {
                     OutlinedButton(onClick = onJoin) { Text("Войти") }
                     OutlinedButton(onClick = onLeave) { Text("Выйти") }
                 }
@@ -1462,15 +1813,25 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            SectionCard(title = "Диагностика", subtitle = "Служебный раздел для проверки сети и маршрутов") {
+            SectionCard(
+                title = "Диагностика",
+                subtitle = "Служебный раздел для проверки сети и маршрутов"
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DiagnosticsSection.entries.forEach { item ->
-                        FilterChip(selected = section == item, onClick = { section = item }, label = { Text(item.title) })
+                        FilterChip(
+                            selected = section == item,
+                            onClick = { section = item },
+                            label = { Text(item.title) })
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
-                    OutlinedButton(onClick = { scope.launch { store.forceTopologyRefresh() } }) { Text("Пересобрать сеть") }
+                    OutlinedButton(onClick = { scope.launch { store.forceTopologyRefresh() } }) {
+                        Text(
+                            "Пересобрать сеть"
+                        )
+                    }
                 }
                 state.error?.let { StatusBanner(it, ChipTone.ERROR) }
             }
@@ -1484,12 +1845,20 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                                 InfoRow("События", state.events.size.toString())
                                 InfoRow("Маршруты", state.routes.size.toString())
                                 InfoRow("Узлы рядом", state.nearby.size.toString())
-                                state.relayStatus?.let { InfoRow("Relay", if (it.enabled) "Включён" else "Выключен") }
+                                state.relayStatus?.let {
+                                    InfoRow(
+                                        "Relay",
+                                        if (it.enabled) "Включён" else "Выключен"
+                                    )
+                                }
                                 state.relayMode?.let { InfoRow("Режим relay", it.asUiText()) }
                                 state.topology?.let {
                                     InfoRow("Связность", it.connectivityMode.asUiText())
                                     InfoRow("Роль", it.networkRoleState.localRole.asUiText())
-                                    InfoRow("Сбой сети", if (it.continuityDegraded) "Есть" else "Нет")
+                                    InfoRow(
+                                        "Сбой сети",
+                                        if (it.continuityDegraded) "Есть" else "Нет"
+                                    )
                                 }
                             }
                         },
@@ -1499,17 +1868,24 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                                     ?.sortedByDescending { it.value }
                                     ?.take(6)
                                     ?.forEach { (key, value) -> InfoRow(key, value.toString()) }
-                                    ?: Text("Метрики пока пусты", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    ?: Text(
+                                        "Метрики пока пусты",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                             }
                         },
                     )
                 }
             }
+
             DiagnosticsSection.EVENTS -> {
                 item {
                     SectionCard(title = "Последние события") {
                         if (state.events.isEmpty()) {
-                            Text("Событий пока нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Событий пока нет.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else {
                             state.events.forEachIndexed { index, event ->
                                 EventRow(event)
@@ -1521,22 +1897,31 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                     }
                 }
             }
+
             DiagnosticsSection.METRICS -> {
                 item {
                     SectionCard(title = "Счётчики") {
-                        state.metrics?.counters?.entries?.sortedBy { it.key }?.forEach { (key, value) ->
-                            InfoRow(key, value.toString())
-                        } ?: Text("Метрики пока пусты", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        state.metrics?.counters?.entries?.sortedBy { it.key }
+                            ?.forEach { (key, value) ->
+                                InfoRow(key, value.toString())
+                            } ?: Text(
+                            "Метрики пока пусты",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
+
             DiagnosticsSection.NETWORK -> {
                 item {
                     ResponsiveColumns(
                         first = {
                             SectionCard(title = "Маршруты") {
                                 if (state.routes.isEmpty()) {
-                                    Text("Маршрутов пока нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        "Маршрутов пока нет.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 } else {
                                     state.routes.forEach { route ->
                                         Row(
@@ -1545,17 +1930,27 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text(route.targetPeerId.shortId(12), fontWeight = FontWeight.SemiBold)
-                                                Text("Через ${route.nextHopPeerId.shortId(10)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text(
+                                                    route.targetPeerId.shortId(12),
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                                Text(
+                                                    "Через ${route.nextHopPeerId.shortId(10)}",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             }
-                                            BadgeChip(route.routeMode.asUiText(), route.routeMode.asTone())
-                                        }
-                                        state.routeHealth.firstOrNull { it.targetPeerId == route.targetPeerId }?.let { health ->
-                                            Text(
-                                                "Состояние: ${health.state.asUiText()} (ошибок: ${health.failureCount})",
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            BadgeChip(
+                                                route.routeMode.asUiText(),
+                                                route.routeMode.asTone()
                                             )
                                         }
+                                        state.routeHealth.firstOrNull { it.targetPeerId == route.targetPeerId }
+                                            ?.let { health ->
+                                                Text(
+                                                    "Состояние: ${health.state.asUiText()} (ошибок: ${health.failureCount})",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
                                     }
                                 }
                             }
@@ -1563,32 +1958,56 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                         second = {
                             SectionCard(title = "Узлы рядом") {
                                 if (state.nearby.isEmpty()) {
-                                    Text("Рядом пока никого нет.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        "Рядом пока никого нет.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 } else {
                                     state.nearby.forEach { nearby ->
                                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                            Text(nearby.peerId.shortId(12), fontWeight = FontWeight.SemiBold)
-                                            Text(nearby.source.asUiText(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(
+                                                nearby.peerId.shortId(12),
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                nearby.source.asUiText(),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
                                 }
                                 state.topology?.let { topology ->
                                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                                    InfoRow("Хост", topology.networkRoleState.currentHostPeerId?.shortId(12) ?: "не выбран")
-                                    InfoRow("Failover", if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет")
-                                    InfoRow("Непрерывность", if (topology.continuityDegraded) "деградация" else "стабильно")
+                                    InfoRow(
+                                        "Хост",
+                                        topology.networkRoleState.currentHostPeerId?.shortId(12)
+                                            ?: "не выбран"
+                                    )
+                                    InfoRow(
+                                        "Failover",
+                                        if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет"
+                                    )
+                                    InfoRow(
+                                        "Непрерывность",
+                                        if (topology.continuityDegraded) "деградация" else "стабильно"
+                                    )
                                 }
                             }
                         },
                     )
                 }
             }
+
             DiagnosticsSection.SECURITY -> {
                 item {
                     SectionCard(title = "Инциденты безопасности") {
-                        val incidents = state.events.filter { it.category == MeshEventCategory.SECURITY }
+                        val incidents =
+                            state.events.filter { it.category == MeshEventCategory.SECURITY }
                         if (incidents.isEmpty()) {
-                            Text("Инцидентов не зафиксировано.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Инцидентов не зафиксировано.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else {
                             incidents.forEachIndexed { index, event ->
                                 EventRow(event)
@@ -1600,16 +2019,27 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                     }
                 }
             }
+
             DiagnosticsSection.TOPOLOGY -> {
                 item {
                     SectionCard(title = "Топология и роли") {
                         val topology = state.topology
                         if (topology == null) {
-                            Text("Снимок топологии недоступен.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Снимок топологии недоступен.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else {
                             InfoRow("Роль узла", topology.networkRoleState.localRole.asUiText())
-                            InfoRow("Текущий хост", topology.networkRoleState.currentHostPeerId?.shortId(12) ?: "не выбран")
-                            InfoRow("Failover", if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет")
+                            InfoRow(
+                                "Текущий хост",
+                                topology.networkRoleState.currentHostPeerId?.shortId(12)
+                                    ?: "не выбран"
+                            )
+                            InfoRow(
+                                "Failover",
+                                if (topology.networkRoleState.failoverInProgress) "в процессе" else "нет"
+                            )
                             InfoRow("Связность", topology.connectivityMode.asUiText())
                             InfoRow("Relay режим", topology.relayMode.asUiText())
                             InfoRow("Ожидают ACK", topology.pendingAckCount.toString())
@@ -1636,16 +2066,20 @@ private fun EventRow(event: org.expert.link.mesh.contract.model.MeshEventLogEntr
         MeshEventCategory.SECURITY -> ChipTone.ERROR
         MeshEventCategory.ROUTING,
         MeshEventCategory.DISCOVERY,
-        -> ChipTone.INFO
+            -> ChipTone.INFO
+
         MeshEventCategory.PAIRING,
         MeshEventCategory.MESSAGING,
         MeshEventCategory.FILE_TRANSFER,
         MeshEventCategory.CALL,
         MeshEventCategory.SYSTEM,
-        -> ChipTone.SUCCESS
+            -> ChipTone.SUCCESS
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             BadgeChip(event.category.asUiText(), tone)
             Text(event.createdAt.asUiTime(), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -1663,7 +2097,9 @@ fun ProfileScreen(
 ) {
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
-    val qrCode = remember(state.invite) { state.invite.takeIf { it.isNotBlank() }?.let(services::buildQrCode) }
+    val qrCode = remember(state.invite) {
+        state.invite.takeIf { it.isNotBlank() }?.let(services::buildQrCode)
+    }
     LaunchedEffect(sessionState.profile, sessionState.endpoint) { store.refresh() }
     LazyColumn(
         modifier = Modifier.screenBounds(),
@@ -1673,7 +2109,10 @@ fun ProfileScreen(
         item {
             ResponsiveColumns(
                 first = {
-                    SectionCard(title = "Профиль", subtitle = "Локальная учётная запись и адрес узла") {
+                    SectionCard(
+                        title = "Профиль",
+                        subtitle = "Локальная учётная запись и адрес узла"
+                    ) {
                         state.profile?.let { profile ->
                             InfoRow("Имя", profile.displayName)
                             Text("ID узла")
@@ -1684,18 +2123,28 @@ fun ProfileScreen(
                                         scope.launch {
                                             services.copyText("ID узла", profile.peerId)
                                                 .onSuccess { onShowMessage("ID узла скопирован") }
-                                                .onFailure { onShowMessage(it.message ?: "Не удалось скопировать") }
+                                                .onFailure {
+                                                    onShowMessage(
+                                                        it.message ?: "Не удалось скопировать"
+                                                    )
+                                                }
                                         }
                                     }) { Text("Копировать ID") }
                                 }
                                 FilledTonalButton(onClick = onPairing) { Text("Сопряжение") }
                             }
                             state.endpoint?.let { InfoRow("Адрес", "${it.host}:${it.port}") }
-                        } ?: Text("Профиль пока недоступен", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } ?: Text(
+                            "Профиль пока недоступен",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 second = {
-                    SectionCard(title = "Приглашение", subtitle = "Создайте приглашение для нового контакта") {
+                    SectionCard(
+                        title = "Приглашение",
+                        subtitle = "Создайте приглашение для нового контакта"
+                    ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { scope.launch { store.createInvite() } }) { Text("Создать") }
                             if (state.invite.isNotBlank() && services.capabilities.canCopyText) {
@@ -1703,7 +2152,11 @@ fun ProfileScreen(
                                     scope.launch {
                                         services.copyText("Приглашение", state.invite)
                                             .onSuccess { onShowMessage("Приглашение скопировано") }
-                                            .onFailure { onShowMessage(it.message ?: "Не удалось скопировать") }
+                                            .onFailure {
+                                                onShowMessage(
+                                                    it.message ?: "Не удалось скопировать"
+                                                )
+                                            }
                                     }
                                 }) { Text("Копировать") }
                             }
@@ -1712,7 +2165,11 @@ fun ProfileScreen(
                                     scope.launch {
                                         services.shareText("Приглашение Expert Link", state.invite)
                                             .onSuccess { onShowMessage("Окно отправки открыто") }
-                                            .onFailure { onShowMessage(it.message ?: "Не удалось открыть отправку") }
+                                            .onFailure {
+                                                onShowMessage(
+                                                    it.message ?: "Не удалось открыть отправку"
+                                                )
+                                            }
                                     }
                                 }) { Text("Поделиться") }
                             }
@@ -1722,11 +2179,17 @@ fun ProfileScreen(
                             ) { Text("Сканировать") }
                         }
                         if (state.invite.isBlank()) {
-                            Text("Создайте приглашение, чтобы поделиться им с другим устройством.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Создайте приглашение, чтобы поделиться им с другим устройством.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         } else {
                             MonospaceValue(state.invite)
                             if (!services.capabilities.canScanQr) {
-                                Text("Если сканер недоступен, передайте строку вручную или через копирование.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "Если сканер недоступен, передайте строку вручную или через копирование.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                         state.message?.let { StatusBanner(it, ChipTone.SUCCESS) }
@@ -1775,11 +2238,22 @@ fun SettingsScreen(
                             label = { Text("Адрес") },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        NumberField(label = "Порт связи", value = state.config.httpPort.toString()) { value ->
-                            value.toIntOrNull()?.let { port -> store.updateConfig { config -> config.copy(httpPort = port) } }
+                        NumberField(
+                            label = "Порт связи",
+                            value = state.config.httpPort.toString()
+                        ) { value ->
+                            value.toIntOrNull()
+                                ?.let { port -> store.updateConfig { config -> config.copy(httpPort = port) } }
                         }
-                        NumberField(label = "Порт поиска", value = state.config.discoveryPort.toString()) { value ->
-                            value.toIntOrNull()?.let { port -> store.updateConfig { config -> config.copy(discoveryPort = port) } }
+                        NumberField(
+                            label = "Порт поиска",
+                            value = state.config.discoveryPort.toString()
+                        ) { value ->
+                            value.toIntOrNull()?.let { port ->
+                                store.updateConfig { config ->
+                                    config.copy(discoveryPort = port)
+                                }
+                            }
                         }
                         OutlinedTextField(
                             value = state.config.multicastGroup,
@@ -1790,18 +2264,45 @@ fun SettingsScreen(
                     }
                 },
                 second = {
-                    SectionCard(title = "Что включено", subtitle = "Обычные пользовательские функции") {
+                    SectionCard(
+                        title = "Что включено",
+                        subtitle = "Обычные пользовательские функции"
+                    ) {
                         ToggleRow("Поиск узлов", state.config.featureFlags.discoveryEnabled) {
-                            store.updateConfig { config -> config.copy(featureFlags = config.featureFlags.copy(discoveryEnabled = it)) }
+                            store.updateConfig { config ->
+                                config.copy(
+                                    featureFlags = config.featureFlags.copy(
+                                        discoveryEnabled = it
+                                    )
+                                )
+                            }
                         }
                         ToggleRow("Relay", state.config.featureFlags.relayEnabled) {
-                            store.updateConfig { config -> config.copy(featureFlags = config.featureFlags.copy(relayEnabled = it)) }
+                            store.updateConfig { config ->
+                                config.copy(
+                                    featureFlags = config.featureFlags.copy(
+                                        relayEnabled = it
+                                    )
+                                )
+                            }
                         }
                         ToggleRow("Искать через relay", relay.forceRelayLookup) {
-                            store.updateConfig { config -> config.copy(relay = relay.copy(forceRelayLookup = it)) }
+                            store.updateConfig { config ->
+                                config.copy(
+                                    relay = relay.copy(
+                                        forceRelayLookup = it
+                                    )
+                                )
+                            }
                         }
                         ToggleRow("Узел готов к relay", relay.relayEligible) {
-                            store.updateConfig { config -> config.copy(relay = relay.copy(relayEligible = it)) }
+                            store.updateConfig { config ->
+                                config.copy(
+                                    relay = relay.copy(
+                                        relayEligible = it
+                                    )
+                                )
+                            }
                         }
                     }
                 },
@@ -1810,12 +2311,33 @@ fun SettingsScreen(
         item {
             ResponsiveColumns(
                 first = {
-                    SectionCard(title = "Для проверки", subtitle = "Технические режимы для локального demo") {
-                        ToggleRow("In-memory transport", state.config.featureFlags.inMemoryTransport) {
-                            store.updateConfig { config -> config.copy(featureFlags = config.featureFlags.copy(inMemoryTransport = it)) }
+                    SectionCard(
+                        title = "Для проверки",
+                        subtitle = "Технические режимы для локального demo"
+                    ) {
+                        ToggleRow(
+                            "In-memory transport",
+                            state.config.featureFlags.inMemoryTransport
+                        ) {
+                            store.updateConfig { config ->
+                                config.copy(
+                                    featureFlags = config.featureFlags.copy(
+                                        inMemoryTransport = it
+                                    )
+                                )
+                            }
                         }
-                        ToggleRow("In-memory discovery", state.config.featureFlags.inMemoryDiscovery) {
-                            store.updateConfig { config -> config.copy(featureFlags = config.featureFlags.copy(inMemoryDiscovery = it)) }
+                        ToggleRow(
+                            "In-memory discovery",
+                            state.config.featureFlags.inMemoryDiscovery
+                        ) {
+                            store.updateConfig { config ->
+                                config.copy(
+                                    featureFlags = config.featureFlags.copy(
+                                        inMemoryDiscovery = it
+                                    )
+                                )
+                            }
                         }
                     }
                 },

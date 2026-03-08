@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -62,6 +63,8 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import org.webrtc.audio.JavaAudioDeviceModule
 
+private const val ANDROID_RTC_TAG = "ExpertLinkCall/AndroidRTC"
+
 /**
  * Реальная Android интеграция WebRTC media-engine.
  *
@@ -76,6 +79,8 @@ class AndroidWebRtcMediaEngineAdapter(
     private val sessions = ConcurrentHashMap<String, AndroidWebRtcSession>()
 
     init {
+        AndroidVideoTrackRegistry.setSharedContext(eglBase.eglBaseContext)
+        Log.d(ANDROID_RTC_TAG, "Initializing adapter")
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(appContext)
                 .setEnableInternalTracer(false)
@@ -88,6 +93,7 @@ class AndroidWebRtcMediaEngineAdapter(
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
         audioDeviceModule.release()
+        Log.d(ANDROID_RTC_TAG, "PeerConnectionFactory ready")
     }
 
     override val isSupported: Boolean = true
@@ -153,6 +159,7 @@ private class AndroidWebRtcSession(
     private val peerConnection: PeerConnection = createPeerConnection()
 
     init {
+        trace("session init call=$callId local=$localPeerId remote=$remotePeerIds type=${config.callType}")
         prepareAudioRouting()
         prepareLocalTracks()
         statsJob = scope.launch {
@@ -173,7 +180,9 @@ private class AndroidWebRtcSession(
                 ),
             )
         }
-        return createLocalDescription(isOffer = true, constraints = constraints)
+        return createLocalDescription(isOffer = true, constraints = constraints).also { description ->
+            trace("createOffer success call=$callId sdpLength=${description.sdp.length}")
+        }
     }
 
     override suspend fun createAnswer(): MeshSessionDescription {
@@ -181,20 +190,25 @@ private class AndroidWebRtcSession(
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"))
         }
-        return createLocalDescription(isOffer = false, constraints = constraints)
+        return createLocalDescription(isOffer = false, constraints = constraints).also { description ->
+            trace("createAnswer success call=$callId sdpLength=${description.sdp.length}")
+        }
     }
 
     override suspend fun setRemoteDescription(description: MeshSessionDescription) {
+        trace("setRemoteDescription start call=$callId type=${description.type} sdpLength=${description.sdp.length}")
         val remote = SessionDescription(description.type.toWebRtc(), description.sdp)
         suspendCancellableCoroutine<Unit> { continuation ->
             peerConnection.setRemoteDescription(
                 object : SdpObserver {
                     override fun onCreateSuccess(sessionDescription: SessionDescription?) = Unit
                     override fun onSetSuccess() {
+                        trace("setRemoteDescription success call=$callId type=${description.type}")
                         continuation.resume(Unit)
                     }
                     override fun onCreateFailure(message: String?) = Unit
                     override fun onSetFailure(message: String?) {
+                        trace("setRemoteDescription failed call=$callId type=${description.type} error=${message ?: "unknown"}")
                         continuation.resumeWithException(IllegalStateException(message ?: "setRemoteDescription failed"))
                     }
                 },
@@ -204,6 +218,10 @@ private class AndroidWebRtcSession(
     }
 
     override suspend fun addIceCandidate(candidate: MeshIceCandidate) {
+        trace(
+            "addIceCandidate call=$callId sdpMid=${candidate.sdpMid} mLine=${candidate.sdpMLineIndex} " +
+                "length=${candidate.candidate.length}",
+        )
         val accepted = peerConnection.addIceCandidate(
             IceCandidate(
                 candidate.sdpMid,
@@ -212,8 +230,10 @@ private class AndroidWebRtcSession(
             ),
         )
         if (!accepted) {
+            trace("addIceCandidate rejected call=$callId")
             throw IllegalStateException("ICE candidate rejected")
         }
+        trace("addIceCandidate accepted call=$callId")
     }
 
     override suspend fun setMicrophoneEnabled(enabled: Boolean) {
@@ -346,6 +366,7 @@ private class AndroidWebRtcSession(
                 PeerConnection.IceConnectionState.CLOSED -> MeshMediaConnectionState.CLOSED
                 null -> MeshMediaConnectionState.NEW
             }
+            trace("onIceConnectionChange call=$callId webrtc=$newState mapped=$mapped")
             updateConnectionState(mapped)
         }
 
@@ -355,6 +376,10 @@ private class AndroidWebRtcSession(
 
         override fun onIceCandidate(candidate: IceCandidate?) {
             val ice = candidate ?: return
+            trace(
+                "emitLocalIce call=$callId sdpMid=${ice.sdpMid} mLine=${ice.sdpMLineIndex} " +
+                    "length=${ice.sdp.length}",
+            )
             signalFlow.tryEmit(
                 MeshWebRtcSignalEvent(
                     callId = callId,
@@ -371,7 +396,13 @@ private class AndroidWebRtcSession(
 
         override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) = Unit
 
-        override fun onAddStream(stream: org.webrtc.MediaStream?) = Unit
+        override fun onAddStream(stream: org.webrtc.MediaStream?) {
+            trace(
+                "onAddStream call=$callId audio=${stream?.audioTracks?.size ?: 0} " +
+                    "video=${stream?.videoTracks?.size ?: 0}",
+            )
+            handleRemoteStream(stream)
+        }
 
         override fun onRemoveStream(stream: org.webrtc.MediaStream?) = Unit
 
@@ -379,7 +410,11 @@ private class AndroidWebRtcSession(
 
         override fun onRenegotiationNeeded() = Unit
 
-        override fun onAddTrack(receiver: org.webrtc.RtpReceiver?, mediaStreams: Array<out org.webrtc.MediaStream>?) = Unit
+        override fun onAddTrack(receiver: org.webrtc.RtpReceiver?, mediaStreams: Array<out org.webrtc.MediaStream>?) {
+            trace("onAddTrack call=$callId kind=${receiver?.track()?.kind()} mediaStreams=${mediaStreams?.size ?: 0}")
+            handleRemoteTrack(receiver?.track())
+            mediaStreams.orEmpty().forEach(::handleRemoteStream)
+        }
 
         override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
             val mapped = when (newState) {
@@ -391,6 +426,7 @@ private class AndroidWebRtcSession(
                 PeerConnection.PeerConnectionState.CLOSED -> MeshMediaConnectionState.CLOSED
                 null -> MeshMediaConnectionState.NEW
             }
+            trace("onConnectionChange call=$callId webrtc=$newState mapped=$mapped")
             updateConnectionState(mapped)
             when (mapped) {
                 MeshMediaConnectionState.CONNECTING -> {
@@ -416,35 +452,50 @@ private class AndroidWebRtcSession(
         }
 
         override fun onTrack(transceiver: RtpTransceiver?) {
-            val track = transceiver?.receiver?.track() ?: return
-            val mappedPeerId = resolveRemotePeerIdForTrack()
-            when (track.kind()) {
-                MediaStreamTrack.AUDIO_TRACK_KIND -> {
-                    val audio = track as? AudioTrack
-                    if (audio != null && mappedPeerId != null) {
-                        audio.setEnabled(true)
-                        remoteAudioTracks[mappedPeerId] = audio
-                    }
-                    markRemoteTrack(audio = true, video = false)
-                }
-                MediaStreamTrack.VIDEO_TRACK_KIND -> {
-                    val video = track as? VideoTrack
-                    if (video != null) {
-                        video.setEnabled(true)
-                        val resolvedPeerId = mappedPeerId ?: remotePeerIds.firstOrNull()
-                        if (resolvedPeerId != null) {
-                            remoteVideoTracks[resolvedPeerId] = video
-                            AndroidVideoTrackRegistry.registerRemoteTrack(callId, resolvedPeerId, video)
-                        }
-                    }
-                    markRemoteTrack(audio = false, video = true)
-                }
-            }
+            trace("onTrack call=$callId kind=${transceiver?.receiver?.track()?.kind()}")
+            handleRemoteTrack(transceiver?.receiver?.track())
         }
-
+        
         override fun onStandardizedIceConnectionChange(newState: PeerConnection.IceConnectionState?) = Unit
 
         override fun onSelectedCandidatePairChanged(event: org.webrtc.CandidatePairChangeEvent?) = Unit
+    }
+
+    private fun handleRemoteStream(stream: org.webrtc.MediaStream?) {
+        stream ?: return
+        trace("handleRemoteStream call=$callId audio=${stream.audioTracks.size} video=${stream.videoTracks.size}")
+        stream.audioTracks.orEmpty().forEach(::handleRemoteTrack)
+        stream.videoTracks.orEmpty().forEach(::handleRemoteTrack)
+    }
+
+    private fun handleRemoteTrack(track: MediaStreamTrack?) {
+        track ?: return
+        val mappedPeerId = resolveRemotePeerIdForTrack()
+        trace("handleRemoteTrack call=$callId kind=${track.kind()} mappedPeer=$mappedPeerId remotePeers=$remotePeerIds")
+        when (track.kind()) {
+            MediaStreamTrack.AUDIO_TRACK_KIND -> {
+                val audio = track as? AudioTrack
+                if (audio != null && mappedPeerId != null) {
+                    audio.setEnabled(true)
+                    remoteAudioTracks[mappedPeerId] = audio
+                    trace("remoteAudioAttached call=$callId peer=$mappedPeerId")
+                }
+                markRemoteTrack(audio = true, video = false)
+            }
+            MediaStreamTrack.VIDEO_TRACK_KIND -> {
+                val video = track as? VideoTrack
+                if (video != null) {
+                    video.setEnabled(true)
+                    val resolvedPeerId = mappedPeerId ?: remotePeerIds.firstOrNull()
+                    if (resolvedPeerId != null) {
+                        remoteVideoTracks[resolvedPeerId] = video
+                        AndroidVideoTrackRegistry.registerRemoteTrack(callId, resolvedPeerId, video)
+                        trace("remoteVideoAttached call=$callId peer=$resolvedPeerId track=${video.id()}")
+                    }
+                }
+                markRemoteTrack(audio = false, video = true)
+            }
+        }
     }
 
     private fun prepareLocalTracks() {
@@ -458,6 +509,7 @@ private class AndroidWebRtcSession(
         )
         audioTrack = factory.createAudioTrack("audio-$callId", audioSource)
         audioTrack?.setEnabled(true)
+        trace("localAudioTrack ready call=$callId")
 
         if (config.callType == MeshCallType.VIDEO) {
             val createdCapturer = createVideoCapturer()
@@ -475,6 +527,7 @@ private class AndroidWebRtcSession(
                 videoTrack = factory.createVideoTrack("video-$callId", videoSource)
                 videoTrack?.setEnabled(true)
                 videoTrack?.let { AndroidVideoTrackRegistry.registerLocalTrack(callId, it) }
+                trace("localVideoTrack ready call=$callId size=${width}x$height fps=$fps")
             } else {
                 updateState { current ->
                     current.copy(
@@ -483,12 +536,14 @@ private class AndroidWebRtcSession(
                         updatedAt = Clock.System.now(),
                     )
                 }
+                trace("localVideoTrack unavailable call=$callId")
             }
         }
 
         val streamIds = listOf("stream-$callId")
         audioTrack?.let { peerConnection.addTrack(it, streamIds) }
         videoTrack?.let { peerConnection.addTrack(it, streamIds) }
+        trace("localTracks added call=$callId audio=${audioTrack != null} video=${videoTrack != null}")
     }
 
     private suspend fun createLocalDescription(
@@ -611,6 +666,10 @@ private class AndroidWebRtcSession(
                     connectionState = current.connectionState,
                 )
             }
+            trace(
+                "markRemoteTrack call=$callId audio=$audio video=$video peers=" +
+                    peers.joinToString { "${it.peerId}[a=${it.hasAudioTrack},v=${it.hasVideoTrack},state=${it.connectionState}]" },
+            )
             current.copy(peers = peers, updatedAt = Clock.System.now())
         }
     }
@@ -624,6 +683,7 @@ private class AndroidWebRtcSession(
                 updatedAt = Clock.System.now(),
             )
         }
+        trace("updateConnectionState call=$callId state=$connectionState")
     }
 
     private suspend fun emitStatsSnapshot() {
@@ -677,6 +737,10 @@ private class AndroidWebRtcSession(
 
     private inline fun updateState(transform: (MeshCallMediaState) -> MeshCallMediaState) {
         stateFlow.value = transform(stateFlow.value)
+    }
+
+    private fun trace(message: String) {
+        Log.d(ANDROID_RTC_TAG, message)
     }
 
     private fun prepareAudioRouting() {

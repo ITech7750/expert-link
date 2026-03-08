@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.decodeFromString
 import org.expert.link.mesh.domain.model.call.CallMediaState
 import org.expert.link.mesh.domain.model.call.CallMediaStats
+import org.expert.link.mesh.domain.model.call.CallParticipantState
 import org.expert.link.mesh.domain.model.call.CallScope
 import org.expert.link.mesh.domain.model.call.CallSession
 import org.expert.link.mesh.domain.model.call.CallSignal
@@ -53,10 +54,18 @@ class CallMediaService(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val signalJobs = ConcurrentHashMap<String, Job>()
     private val sessionTargets = ConcurrentHashMap<String, Set<String>>()
+    private val localAnswerSignalsSent = ConcurrentHashMap.newKeySet<String>()
+    private val remoteDescriptionsApplied = ConcurrentHashMap.newKeySet<String>()
+    private val pendingIceCandidates = ConcurrentHashMap<String, MutableList<IceCandidate>>()
 
     /** Возвращает `true`, если платформа предоставляет реальный media-engine. */
     val mediaSupported: Boolean
         get() = mediaEnginePort.isSupported
+
+    private fun trace(message: String) {
+        logger.info { message }
+        println("ExpertLinkCall/CallMediaService $message")
+    }
 
     /** Запускает исходящий 1:1 звонок и инициирует WebRTC offer/ICE. */
     suspend fun startDirectCall(
@@ -65,6 +74,7 @@ class CallMediaService(
         preferredOffer: String? = null,
         callType: CallType,
     ): CallSession {
+        trace("startDirectCall peer=$recipientPeerId conversation=$conversationId type=$callType mediaSupported=$mediaSupported")
         val inviteOffer = if (mediaEnginePort.isSupported) "" else preferredOffer.orEmpty()
         val session = callSignalingService.startDirectCall(
             recipientPeerId = recipientPeerId,
@@ -73,10 +83,12 @@ class CallMediaService(
             callType = callType,
         )
         sessionTargets[session.callId] = targetsFromSession(session)
+        trace("startDirectCall created session=${session.callId} targets=${sessionTargets[session.callId]}")
         if (mediaEnginePort.isSupported) {
             ensureSession(session)?.let { webRtcSession ->
                 runCatching {
                     val offer = webRtcSession.createOffer()
+                    trace("local offer ready call=${session.callId} sdpLength=${offer.sdp.length}")
                     sendSessionDescriptionSignal(session, offer, CallSignalType.SDP_OFFER)
                     nodeMetricsService.increment("call.media.offer.sent")
                 }.onFailure { error ->
@@ -120,13 +132,19 @@ class CallMediaService(
 
     /** Обрабатывает входящее приглашение и подготавливает media-сессию. */
     suspend fun handleInvite(payload: CallInvite): CallSession {
+        trace(
+            "handleInvite call=${payload.callId} sender=${payload.senderPeerId} recipient=${payload.recipientPeerId} " +
+                "targets=${payload.targetPeerIds} type=${payload.callType} offerLength=${payload.offer.length}",
+        )
         val session = callSignalingService.handleInvite(payload)
         sessionTargets[session.callId] = targetsFromSession(session)
+        trace("handleInvite session=${session.callId} resolvedTargets=${sessionTargets[session.callId]}")
         if (mediaEnginePort.isSupported) {
             ensureSession(session)?.let { webRtcSession ->
                 if (payload.offer.isNotBlank()) {
                     runCatching {
                         webRtcSession.setRemoteDescription(decodeSessionDescription(payload.offer, SdpType.OFFER))
+                        markRemoteDescriptionApplied(payload.callId, webRtcSession)
                     }.onFailure { error ->
                         logger.warn(error) { "Failed to apply invite offer for call ${payload.callId}" }
                     }
@@ -139,7 +157,12 @@ class CallMediaService(
     /** Принимает звонок и отправляет signaling с SDP answer. */
     suspend fun accept(callId: String, recipientPeerId: String, preferredAnswer: String? = null): CallSignal {
         val answerPayload = resolveAnswerPayload(callId, preferredAnswer)
-        return callSignalingService.accept(callId, recipientPeerId, answerPayload)
+        trace("accept call=$callId recipient=$recipientPeerId answerLength=${answerPayload.length}")
+        val signal = callSignalingService.accept(callId, recipientPeerId, answerPayload)
+        if (answerPayload.isNotBlank()) {
+            localAnswerSignalsSent += callId
+        }
+        return signal
     }
 
     /** Отклоняет звонок и освобождает media-сессию. */
@@ -152,7 +175,12 @@ class CallMediaService(
     /** Подключается к групповому звонку и отправляет signaling с SDP answer. */
     suspend fun join(callId: String, recipientPeerId: String, preferredAnswer: String? = null): CallSignal {
         val answerPayload = resolveAnswerPayload(callId, preferredAnswer)
-        return callSignalingService.join(callId, recipientPeerId, answerPayload)
+        trace("join call=$callId recipient=$recipientPeerId answerLength=${answerPayload.length}")
+        val signal = callSignalingService.join(callId, recipientPeerId, answerPayload)
+        if (answerPayload.isNotBlank()) {
+            localAnswerSignalsSent += callId
+        }
+        return signal
     }
 
     /** Выходит из звонка и закрывает media-сессию для локального узла. */
@@ -176,16 +204,23 @@ class CallMediaService(
             return updated
         }
         val signal = payload.signal
+        trace(
+            "handleSignal call=${signal.callId} type=${signal.signalType} sender=${signal.senderPeerId} " +
+                "recipient=${signal.recipientPeerId} payloadLength=${signal.payload.length}",
+        )
         val mediaSession = ensureSession(updated) ?: return updated
         when (signal.signalType) {
             CallSignalType.SDP_OFFER -> {
                 runCatching {
                     mediaSession.setRemoteDescription(decodeSessionDescription(signal.payload, SdpType.OFFER))
+                    markRemoteDescriptionApplied(signal.callId, mediaSession)
                 }.onFailure { error -> logger.warn(error) { "Failed to apply remote offer for ${signal.callId}" } }
+                maybeSendDeferredAnswer(updated, signal, mediaSession)
             }
             CallSignalType.SDP_ANSWER -> {
                 runCatching {
                     mediaSession.setRemoteDescription(decodeSessionDescription(signal.payload, SdpType.ANSWER))
+                    markRemoteDescriptionApplied(signal.callId, mediaSession)
                 }.onFailure { error -> logger.warn(error) { "Failed to apply remote answer for ${signal.callId}" } }
             }
             CallSignalType.ACCEPT,
@@ -194,14 +229,20 @@ class CallMediaService(
                 if (signal.payload.isNotBlank()) {
                     runCatching {
                         mediaSession.setRemoteDescription(decodeSessionDescription(signal.payload, SdpType.ANSWER))
+                        markRemoteDescriptionApplied(signal.callId, mediaSession)
                     }.onFailure { error -> logger.warn(error) { "Failed to apply accept/join answer for ${signal.callId}" } }
                 }
             }
             CallSignalType.ICE_CANDIDATE -> {
                 if (signal.payload.isNotBlank()) {
-                    runCatching {
-                        mediaSession.addIceCandidate(decodeIceCandidate(signal.payload))
-                    }.onFailure { error -> logger.warn(error) { "Failed to apply ICE candidate for ${signal.callId}" } }
+                    val candidate = decodeIceCandidate(signal.payload)
+                    if (remoteDescriptionsApplied.contains(signal.callId)) {
+                        runCatching {
+                            mediaSession.addIceCandidate(candidate)
+                        }.onFailure { error -> logger.warn(error) { "Failed to apply ICE candidate for ${signal.callId}" } }
+                    } else {
+                        queuePendingIceCandidate(signal.callId, candidate)
+                    }
                 }
             }
             CallSignalType.REJECT,
@@ -271,13 +312,17 @@ class CallMediaService(
         signalJobs.clear()
         val callIds = mediaEnginePort.listSessions().map { it.callId }
         callIds.forEach { callId -> mediaEnginePort.closeSession(callId) }
+        localAnswerSignalsSent.clear()
         sessionTargets.clear()
+        remoteDescriptionsApplied.clear()
+        pendingIceCandidates.clear()
         scope.cancel()
     }
 
     private suspend fun resolveAnswerPayload(callId: String, preferredAnswer: String?): String {
         val explicit = preferredAnswer?.takeIf { it.isNotBlank() }
         if (explicit != null || !mediaEnginePort.isSupported) {
+            trace("resolveAnswerPayload call=$callId usingExplicit=${explicit != null} mediaSupported=$mediaSupported")
             return explicit.orEmpty()
         }
         val signaling = callSignalingService.session(callId) ?: return ""
@@ -292,6 +337,7 @@ class CallMediaService(
 
     private suspend fun ensureSession(session: CallSession): org.expert.link.mesh.domain.port.external.WebRtcSessionPort? {
         if (!mediaEnginePort.isSupported) return null
+        trace("ensureSession call=${session.callId} targets=${targetsFromSession(session)} type=${session.callType}")
         val opened = mediaEnginePort.openSession(
             WebRtcSessionConfig(
                 callId = session.callId,
@@ -319,6 +365,10 @@ class CallMediaService(
                     CallSignalType.ICE_CANDIDATE -> signalEvent.iceCandidate?.let(::encodeIceCandidate)
                     else -> null
                 } ?: return@collect
+                trace(
+                    "forwardSignal call=${signalEvent.callId} type=${signalEvent.signalType} payloadLength=${payload.length} " +
+                        "targets=${resolveTargets(signalEvent.callId)}",
+                )
                 resolveTargets(signalEvent.callId).forEach { targetPeerId ->
                     runCatching {
                         callSignalingService.sendSignal(
@@ -339,6 +389,7 @@ class CallMediaService(
 
     private suspend fun sendSessionDescriptionSignal(session: CallSession, description: SessionDescription, signalType: CallSignalType) {
         val payload = encodeSessionDescription(description)
+        trace("sendSessionDescription call=${session.callId} type=$signalType payloadLength=${payload.length}")
         targetsFromSession(session).forEach { targetPeerId ->
             callSignalingService.sendSignal(
                 callId = session.callId,
@@ -346,6 +397,42 @@ class CallMediaService(
                 signalType = signalType,
                 payload = payload,
             )
+        }
+    }
+
+    private suspend fun maybeSendDeferredAnswer(
+        session: CallSession,
+        signal: CallSignal,
+        mediaSession: org.expert.link.mesh.domain.port.external.WebRtcSessionPort,
+    ) {
+        if (signal.signalType != CallSignalType.SDP_OFFER || localAnswerSignalsSent.contains(signal.callId)) {
+            return
+        }
+        val localPeerId = runCatching { localProfileService.require().peerId }.getOrNull() ?: return
+        val localParticipantState = session.participants
+            .firstOrNull { it.peerId == localPeerId }
+            ?.state
+        if (localParticipantState !in setOf(CallParticipantState.JOINING, CallParticipantState.CONNECTED)) {
+            return
+        }
+        runCatching {
+            encodeSessionDescription(mediaSession.createAnswer())
+        }.onSuccess { answerPayload ->
+            trace("maybeSendDeferredAnswer call=${signal.callId} recipient=${signal.senderPeerId} answerLength=${answerPayload.length}")
+            runCatching {
+                callSignalingService.sendSignal(
+                    callId = signal.callId,
+                    recipientPeerId = signal.senderPeerId,
+                    signalType = CallSignalType.SDP_ANSWER,
+                    payload = answerPayload,
+                )
+                localAnswerSignalsSent += signal.callId
+                nodeMetricsService.increment("call.media.answer.sent")
+            }.onFailure { error ->
+                logger.warn(error) { "Failed to send deferred SDP answer for call ${signal.callId}" }
+            }
+        }.onFailure { error ->
+            logger.warn(error) { "Failed to create deferred SDP answer for call ${signal.callId}" }
         }
     }
 
@@ -383,8 +470,34 @@ class CallMediaService(
     private suspend fun closeMediaSession(callId: String) {
         signalJobs.remove(callId)?.cancel()
         sessionTargets.remove(callId)
+        localAnswerSignalsSent.remove(callId)
+        remoteDescriptionsApplied.remove(callId)
+        pendingIceCandidates.remove(callId)
         runCatching { mediaEnginePort.closeSession(callId) }
             .onFailure { error -> logger.warn(error) { "Failed to close media session $callId" } }
+    }
+
+    private fun queuePendingIceCandidate(callId: String, candidate: IceCandidate) {
+        pendingIceCandidates.compute(callId) { _, existing ->
+            (existing ?: mutableListOf()).apply { add(candidate) }
+        }
+    }
+
+    private suspend fun markRemoteDescriptionApplied(
+        callId: String,
+        mediaSession: org.expert.link.mesh.domain.port.external.WebRtcSessionPort,
+    ) {
+        remoteDescriptionsApplied += callId
+        trace("markRemoteDescriptionApplied call=$callId deferredIce=${pendingIceCandidates[callId]?.size ?: 0}")
+        pendingIceCandidates.remove(callId)
+            .orEmpty()
+            .forEach { candidate ->
+                runCatching {
+                    mediaSession.addIceCandidate(candidate)
+                }.onFailure { error ->
+                    logger.warn(error) { "Failed to apply deferred ICE candidate for $callId" }
+                }
+            }
     }
 
     private suspend fun targetsFromSession(session: CallSession): Set<String> {

@@ -81,6 +81,7 @@ import org.expert.link.mesh.domain.model.security.SecuritySeverity
 import org.expert.link.mesh.domain.port.external.DiscoveryPort
 import org.expert.link.mesh.domain.port.external.RendezvousRegistryPort
 import org.expert.link.mesh.domain.port.repository.EndpointCachePort
+import org.expert.link.mesh.domain.port.repository.PeerRepositoryPort
 import org.expert.link.mesh.domain.port.repository.ReversePathRepositoryPort
 
 /**
@@ -102,6 +103,7 @@ class NodeLifecycleService(
     private val discoveryPort: DiscoveryPort?,
     private val discoveryOrchestrationService: DiscoveryOrchestrationService?,
     private val reversePathRepositoryPort: ReversePathRepositoryPort,
+    private val peerRepositoryPort: PeerRepositoryPort,
     private val endpointCachePort: EndpointCachePort,
     private val messageEncryptionService: MessageEncryptionService,
     private val packetSignatureService: PacketSignatureService,
@@ -121,6 +123,13 @@ class NodeLifecycleService(
     private val onStart: suspend () -> Unit = {},
     private val onStop: suspend () -> Unit = {},
 ) {
+    private val ackablePacketTypes = setOf(
+        PacketType.CHAT_MESSAGE,
+        PacketType.CALL_INVITE,
+        PacketType.CALL_SIGNAL,
+        PacketType.CALL_HANGUP,
+    )
+
     private val logger = KotlinLogging.logger {}
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var discoveryJob: Job? = null
@@ -140,6 +149,7 @@ class NodeLifecycleService(
                 else -> RelayMode.DISABLED
             },
         )
+        restoreKnownPeerRoutes()
         if (configuration.featureFlags.discoveryEnabled && discoveryPort != null && discoveryOrchestrationService != null) {
             discoveryPort.start(localProfileService.asPeerIdentity(localProfile), localEndpoint)
             discoveryPort.broadcastHello()
@@ -233,8 +243,8 @@ class NodeLifecycleService(
 
         val isNew = deduplicationService.isNew(envelope.packetId)
         if (!isNew) {
-            if (envelope.targetPeerId == localProfile.peerId && envelope.requiresAck && envelope.packetType == PacketType.CHAT_MESSAGE) {
-                chatMessagingService.sendDeliveryAck(envelope)
+            if (envelope.targetPeerId == localProfile.peerId && envelope.requiresAck && envelope.packetType in ackablePacketTypes) {
+                enqueueDeliveryAck(envelope)
             }
             return TransportDeliveryResult(success = true, deliveredAt = now())
         }
@@ -308,18 +318,27 @@ class NodeLifecycleService(
                 verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
                 val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as CallInvite
                 callMediaService.handleInvite(payload)
+                if (envelope.requiresAck) {
+                    enqueueDeliveryAck(envelope)
+                }
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
             PacketType.CALL_SIGNAL -> {
                 verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
                 val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as CallSignalPayload
                 callMediaService.handleSignal(payload)
+                if (envelope.requiresAck) {
+                    enqueueDeliveryAck(envelope)
+                }
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
             PacketType.CALL_HANGUP -> {
                 verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
                 val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as CallHangup
                 callMediaService.handleHangup(payload)
+                if (envelope.requiresAck) {
+                    enqueueDeliveryAck(envelope)
+                }
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
             PacketType.PEER_LOOKUP -> {
@@ -548,6 +567,19 @@ class NodeLifecycleService(
         private const val DISCOVERY_LOOKUP_RETRY_MILLIS = 700L
     }
 
+    private suspend fun restoreKnownPeerRoutes() {
+        peerRepositoryPort.list()
+            .filter { peer -> peer.trustState == org.expert.link.mesh.domain.model.identity.TrustState.TRUSTED }
+            .forEach { peer ->
+                val endpointHint = peer.endpointHint ?: return@forEach
+                routingService.learnDirectEndpoint(
+                    peerId = peer.peerIdentity.peerId,
+                    endpoint = endpointHint,
+                    capabilities = peer.peerIdentity.capabilities,
+                )
+            }
+    }
+
     private suspend fun learnObservedNetworkState(envelope: PacketEnvelope) {
         val previousHopId = envelope.previousHopPeerId ?: envelope.sourcePeerId
         val previousEndpoint = endpointCachePort.findByPeerId(previousHopId).firstOrNull()?.endpoint
@@ -594,5 +626,14 @@ class NodeLifecycleService(
             return null
         }
         return trustedPeer.peerIdentity
+    }
+
+    private fun enqueueDeliveryAck(envelope: PacketEnvelope) {
+        scope.launch {
+            runCatching { chatMessagingService.sendDeliveryAck(envelope) }
+                .onFailure { error ->
+                    logger.warn(error) { "Failed to send delivery ack for ${envelope.packetType} packet ${envelope.packetId}" }
+                }
+        }
     }
 }

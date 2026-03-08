@@ -49,6 +49,7 @@ sealed class Child {
             config: Config,
             context: ComponentContext,
             onNavigate: (Config) -> Unit,
+            onReplaceCurrent: (Config) -> Unit,
             onBack: () -> Unit,
         ): Child = when (config) {
             Config.ChatList -> ChatList(
@@ -60,7 +61,7 @@ sealed class Child {
             )
 
             Config.Invite -> Invite(
-                getComponent(context, onNavigate, onBack),
+                getComponent(context, onNavigate, onBack, onReplaceCurrent),
             )
 
             Config.Profile -> Profile(

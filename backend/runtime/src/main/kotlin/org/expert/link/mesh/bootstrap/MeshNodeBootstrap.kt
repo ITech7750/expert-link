@@ -344,6 +344,7 @@ class MeshNodeBootstrap {
             discoveryPort = discoveryPort,
             discoveryOrchestrationService = discoveryOrchestrationService,
             reversePathRepositoryPort = reversePathRepositoryPort,
+            peerRepositoryPort = peerRepositoryPort,
             endpointCachePort = endpointCachePort,
             messageEncryptionService = messageEncryptionService,
             packetSignatureService = packetSignatureService,
@@ -440,7 +441,12 @@ class MeshNodeBootstrap {
     }
 
     private fun isLoopbackAddress(address: String): Boolean {
-        return address == "127.0.0.1" || address == "0:0:0:0:0:0:0:1" || address == "::1"
+        return address == "127.0.0.1" ||
+            address == "0:0:0:0:0:0:0:1" ||
+            address == "::1" ||
+            address.startsWith("169.254.") ||
+            address.startsWith("198.18.") ||
+            address.startsWith("198.19.")
     }
 
     private fun addressPriority(address: String): Int {

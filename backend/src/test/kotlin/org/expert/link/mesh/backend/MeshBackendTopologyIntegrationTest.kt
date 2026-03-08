@@ -36,6 +36,50 @@ class MeshBackendTopologyIntegrationTest {
     }
 
     @Test
+    fun `should reuse existing direct conversation when inbound direct message carries foreign conversation id`() = runBlocking {
+        val alice = MeshBackend.launch(config("pair-reuse-a", 19691))
+        val bob = MeshBackend.launch(config("pair-reuse-b", 19692))
+        try {
+            connectBidirectional(alice, bob)
+            pair(alice, bob)
+            delay(700)
+
+            val aliceConversation = alice.openConversation(bob.profile.peerId)
+            val bobConversation = bob.openConversation(alice.profile.peerId)
+
+            alice.sendChat(
+                MeshChatCommand(
+                    targetPeerId = bob.profile.peerId,
+                    body = "hello from alice",
+                    conversationId = aliceConversation.conversationId,
+                ),
+            )
+            bob.sendChat(
+                MeshChatCommand(
+                    targetPeerId = alice.profile.peerId,
+                    body = "hello from bob",
+                    conversationId = bobConversation.conversationId,
+                ),
+            )
+            delay(700)
+
+            assertThat(
+                alice.conversations().count { conversation ->
+                    conversation.participantPeerIds == setOf(alice.profile.peerId, bob.profile.peerId)
+                },
+            ).isEqualTo(1)
+            assertThat(
+                bob.conversations().count { conversation ->
+                    conversation.participantPeerIds == setOf(alice.profile.peerId, bob.profile.peerId)
+                },
+            ).isEqualTo(1)
+        } finally {
+            runCatching { alice.stop() }
+            runCatching { bob.stop() }
+        }
+    }
+
+    @Test
     fun `should rebuild topology after host loss and keep local delivery continuity`() = runBlocking {
         val host = MeshBackend.launch(config("topo-host", 19781))
         val nodeA = MeshBackend.launch(config("topo-a", 19782))

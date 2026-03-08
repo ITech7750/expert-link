@@ -2,6 +2,7 @@ package org.expert.link.app.android
 
 import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -37,12 +38,25 @@ internal object AndroidFilePicker {
         val uri = deferred.await() ?: return@withLock null
         return@withLock withContext(Dispatchers.IO) {
             val resolver = context.contentResolver
-            val fileName = resolver.getType(uri)
-                ?.substringAfterLast('/')
+            val displayName = resolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && cursor.moveToFirst()) {
+                    cursor.getString(nameIndex)
+                } else {
+                    null
+                }
+            }
+            val fileName = displayName
                 ?.takeIf { it.isNotBlank() }
                 ?: uri.lastPathSegment
-                ?.substringAfterLast('/')
-                ?.takeIf { it.isNotBlank() }
+                    ?.substringAfterLast('/')
+                    ?.takeIf { it.isNotBlank() }
                 ?: "shared-${UUID.randomUUID()}"
             val target = File(context.cacheDir, "expert-link-picker/$fileName")
             target.parentFile?.mkdirs()

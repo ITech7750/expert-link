@@ -6,6 +6,7 @@ import org.expert.link.app.shared.navigation.Config
 import org.expert.link.app.shared.platform.AppPlatformServices
 import org.expert.link.app.shared.presentation.NodeSessionController
 import org.expert.link.app.shared.screen.chat.ChatComponent
+import org.expert.link.app.shared.screen.chat.ChatUiStateStore
 import org.expert.link.app.shared.screen.chatlist.ChatListComponent
 import org.expert.link.app.shared.screen.invite.InviteComponent
 import org.expert.link.app.shared.screen.profile.ProfileComponent
@@ -17,6 +18,7 @@ import org.koin.mp.KoinPlatform.getKoin
 fun appModule(services: AppPlatformServices) = module {
     single { services }
     single { NodeSessionController(get()) }
+    single { ChatUiStateStore() }
 
     factory { params ->
         ChatListComponent(
@@ -42,6 +44,7 @@ fun appModule(services: AppPlatformServices) = module {
             context = params.get(),
             onNavigate = params.get(),
             onBack = params.get(),
+            onReplaceCurrent = params.get(),
         )
     }
 

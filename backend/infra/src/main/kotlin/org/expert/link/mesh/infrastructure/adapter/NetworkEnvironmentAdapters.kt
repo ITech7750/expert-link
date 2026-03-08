@@ -3,6 +3,7 @@ package org.expert.link.mesh.infrastructure.adapter
 import org.expert.link.mesh.domain.port.external.MulticastSupportPort
 import org.expert.link.mesh.domain.port.external.NetworkEnvironmentPort
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.Collections
 
@@ -10,11 +11,27 @@ import java.util.Collections
 class JvmNetworkEnvironmentAdapter : NetworkEnvironmentPort {
     override suspend fun localAddresses(): List<String> {
         return Collections.list(NetworkInterface.getNetworkInterfaces())
-            .flatMap { Collections.list(it.inetAddresses) }
+            .filter { networkInterface ->
+                runCatching { networkInterface.isUp && !networkInterface.isLoopback && !networkInterface.isVirtual }
+                    .getOrDefault(false)
+            }
+            .flatMap { networkInterface -> Collections.list(networkInterface.inetAddresses) }
             .filterIsInstance<Inet4Address>()
+            .filter(::isRoutableAddress)
             .map { it.hostAddress }
             .distinct()
             .sorted()
+    }
+
+    private fun isRoutableAddress(address: InetAddress): Boolean {
+        val host = address.hostAddress ?: return false
+        return !address.isAnyLocalAddress &&
+            !address.isLoopbackAddress &&
+            !address.isLinkLocalAddress &&
+            !address.isMulticastAddress &&
+            !host.startsWith("169.254.") &&
+            !host.startsWith("198.18.") &&
+            !host.startsWith("198.19.")
     }
 }
 

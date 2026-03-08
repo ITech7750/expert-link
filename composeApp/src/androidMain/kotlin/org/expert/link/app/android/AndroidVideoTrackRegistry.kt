@@ -1,5 +1,6 @@
 package org.expert.link.app.android
 
+import android.util.Log
 import java.util.concurrent.atomic.AtomicLong
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
@@ -12,6 +13,8 @@ import org.webrtc.VideoTrack
  * Позволяет связать WebRTC треки из media-адаптера с UI-поверхностями Compose.
  */
 internal object AndroidVideoTrackRegistry {
+    private const val TAG = "ExpertLinkCall/TrackRegistry"
+
     private data class RendererBinding(
         val renderer: SurfaceViewRenderer,
         val callId: String,
@@ -23,17 +26,26 @@ internal object AndroidVideoTrackRegistry {
     private val lock = Any()
     private val idCounter = AtomicLong(0)
     private val eglBase: EglBase = EglBase.create()
+    private var sharedContext: EglBase.Context? = null
     private val localTracks = mutableMapOf<String, VideoTrack>()
     private val remoteTracks = mutableMapOf<String, MutableMap<String, VideoTrack>>()
     private val bindings = mutableMapOf<String, RendererBinding>()
 
-    fun eglContext(): EglBase.Context = eglBase.eglBaseContext
+    fun eglContext(): EglBase.Context = sharedContext ?: eglBase.eglBaseContext
+
+    fun setSharedContext(context: EglBase.Context) {
+        synchronized(lock) {
+            sharedContext = context
+            debug("Shared EGL context updated")
+        }
+    }
 
     fun nextRendererId(): String = "android-renderer-${idCounter.incrementAndGet()}"
 
     fun registerLocalTrack(callId: String, track: VideoTrack) {
         synchronized(lock) {
             localTracks[callId] = track
+            debug("registerLocalTrack call=$callId track=${track.id()}")
             refreshBindingsLocked(callId)
         }
     }
@@ -41,12 +53,14 @@ internal object AndroidVideoTrackRegistry {
     fun registerRemoteTrack(callId: String, peerId: String, track: VideoTrack) {
         synchronized(lock) {
             remoteTracks.getOrPut(callId) { mutableMapOf() }[peerId] = track
+            debug("registerRemoteTrack call=$callId peer=$peerId track=${track.id()}")
             refreshBindingsLocked(callId)
         }
     }
 
     fun clearCall(callId: String) {
         synchronized(lock) {
+            debug("clearCall call=$callId")
             localTracks.remove(callId)
             remoteTracks.remove(callId)
             bindings.values
@@ -74,6 +88,10 @@ internal object AndroidVideoTrackRegistry {
                 local = local,
             )
             bindings[rendererId] = binding
+            debug(
+                "bindRenderer renderer=$rendererId call=$callId local=$local peer=${peerId ?: "first"} " +
+                    "selected=${trackId(selectTrackLocked(callId, peerId, local))}",
+            )
             attachTrackLocked(binding, selectTrackLocked(callId, peerId, local))
         }
     }
@@ -81,6 +99,7 @@ internal object AndroidVideoTrackRegistry {
     fun unbindRenderer(rendererId: String) {
         synchronized(lock) {
             val binding = bindings.remove(rendererId) ?: return
+            debug("unbindRenderer renderer=$rendererId call=${binding.callId} local=${binding.local} peer=${binding.peerId}")
             attachTrackLocked(binding, null)
         }
     }
@@ -110,6 +129,10 @@ internal object AndroidVideoTrackRegistry {
         if (binding.attachedTrack === track) {
             return
         }
+        debug(
+            "attachTrack call=${binding.callId} local=${binding.local} peer=${binding.peerId ?: "first"} " +
+                "from=${trackId(binding.attachedTrack)} to=${trackId(track)}",
+        )
         binding.attachedTrack?.removeSink(binding.renderer)
         binding.attachedTrack = track
         if (track != null) {
@@ -123,12 +146,23 @@ internal object AndroidVideoTrackRegistry {
         renderer.init(eglContext(), null)
         renderer.setEnableHardwareScaler(true)
         renderer.setMirror(local)
-        renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+        renderer.setScalingType(
+            if (local) {
+                RendererCommon.ScalingType.SCALE_ASPECT_FIT
+            } else {
+                RendererCommon.ScalingType.SCALE_ASPECT_FILL
+            },
+        )
         renderer.setZOrderMediaOverlay(local)
     }
 
     fun releaseRenderer(renderer: SurfaceViewRenderer) {
         runCatching { renderer.release() }
     }
-}
 
+    private fun trackId(track: VideoTrack?): String = track?.id() ?: "null"
+
+    private fun debug(message: String) {
+        Log.d(TAG, message)
+    }
+}

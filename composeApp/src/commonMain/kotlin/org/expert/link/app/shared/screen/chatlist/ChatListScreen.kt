@@ -197,11 +197,6 @@ fun ChatListScreen(component: ChatListComponent) {
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.SemiBold,
                                 )
-                                Text(
-                                    text = "Нажмите +",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
                             }
                         }
                     }

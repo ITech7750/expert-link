@@ -8,6 +8,7 @@ import org.expert.link.mesh.domain.model.diagnostics.EventLevel
 import org.expert.link.mesh.domain.model.messaging.MessageDeliveryStatus
 import org.expert.link.mesh.domain.model.network.DeliveryAck
 import org.expert.link.mesh.domain.model.network.PacketEnvelope
+import org.expert.link.mesh.domain.model.network.PacketType
 import org.expert.link.mesh.domain.model.network.PendingAckRecord
 import org.expert.link.mesh.domain.model.network.RouteMode
 import org.expert.link.mesh.domain.model.network.TransportDeliveryResult
@@ -31,6 +32,7 @@ class DeliveryTrackingService(
     private val topologyStateService: TopologyStateService? = null,
 ) {
     private val logger = KotlinLogging.logger {}
+    private val callPacketTypes = setOf(PacketType.CALL_INVITE, PacketType.CALL_SIGNAL, PacketType.CALL_HANGUP)
 
     /**
      * Queues and dispatches an outbound envelope.
@@ -48,6 +50,7 @@ class DeliveryTrackingService(
             createdAt = now(),
         )
         outgoingQueuePort.enqueue(record)
+        traceCall(envelope.packetType, "queue packet=${envelope.packetId} target=${envelope.targetPeerId} requiresAck=${envelope.requiresAck}")
         return sendQueuedRecord(requireNotNull(outgoingQueuePort.dequeue()))
     }
 
@@ -95,6 +98,7 @@ class DeliveryTrackingService(
                 attempt = nextAttempt,
                 nextAttemptAt = retryPolicyService.nextRetryAt(nextAttempt) ?: now().plusSeconds(1),
             )
+            traceCall(record.envelope.packetType, "retry packet=${record.packetId} target=${record.targetPeerId} attempt=$nextAttempt")
             sendQueuedRecord(updatedRecord)
             nodeMetricsService.increment("retry.sent")
             eventLogService.log(
@@ -114,11 +118,16 @@ class DeliveryTrackingService(
             nodeMetricsService.increment("relay.gateway.sent")
             val result = relayGatewayPort?.relayPacket(record.targetPeerId, record.envelope)
                 ?: TransportDeliveryResult(success = false, errorMessage = "Relay gateway is not configured")
+            traceCall(
+                record.envelope.packetType,
+                "dispatch packet=${record.packetId} target=${record.targetPeerId} route=RELAY result=${result.success} error=${result.errorMessage ?: ""}",
+            )
             handleResult(record, result)
             return result
         }
         if (plan.hops.isEmpty()) {
             val result = TransportDeliveryResult(success = false, errorMessage = "No route available")
+            traceCall(record.envelope.packetType, "dispatch packet=${record.packetId} target=${record.targetPeerId} route=NONE result=false error=No route available")
             handleResult(record, result)
             return result
         }
@@ -126,6 +135,10 @@ class DeliveryTrackingService(
         val results = plan.hops.map { hop -> packetTransportPort.sendPacket(hop.endpoint, record.envelope.copy(routeMode = plan.routeMode)) }
         val successful = results.firstOrNull { it.success }
         val result = successful ?: results.first()
+        traceCall(
+            record.envelope.packetType,
+            "dispatch packet=${record.packetId} target=${record.targetPeerId} route=${plan.routeMode} hops=${plan.hops.size} result=${result.success} error=${result.errorMessage ?: ""}",
+        )
         handleResult(record.copy(routeMode = plan.routeMode), result)
         return result
     }
@@ -135,6 +148,7 @@ class DeliveryTrackingService(
             if (record.envelope.requiresAck) {
                 pendingAckRepositoryPort.save(record)
                 messageRepositoryPort.updateStatus(record.messageId, MessageDeliveryStatus.ACK_PENDING)
+                traceCall(record.envelope.packetType, "await-ack packet=${record.packetId} target=${record.targetPeerId}")
             } else {
                 messageRepositoryPort.updateStatus(record.messageId, MessageDeliveryStatus.SENT)
             }
@@ -148,6 +162,7 @@ class DeliveryTrackingService(
             return
         }
         logger.warn { "Failed to send packet ${record.packetId}: ${result.errorMessage}" }
+        traceCall(record.envelope.packetType, "failed packet=${record.packetId} target=${record.targetPeerId} error=${result.errorMessage ?: "unknown"}")
         nodeMetricsService.increment("packet.send_failed")
         topologyStateService?.onDeliveryResult(
             targetPeerId = record.targetPeerId,
@@ -155,5 +170,12 @@ class DeliveryTrackingService(
             success = false,
             viaRelayGateway = record.routeMode == RouteMode.RENDEZVOUS_RELAY,
         )
+    }
+
+    private fun traceCall(packetType: PacketType, message: String) {
+        if (packetType !in callPacketTypes) {
+            return
+        }
+        println("ExpertLinkCall/Delivery type=$packetType $message")
     }
 }

@@ -40,7 +40,8 @@ class InviteComponent(
     context: ComponentContext,
     onNavigate: (Config) -> Unit,
     onBack: () -> Unit,
-) : BaseComponent(context, onNavigate, onBack), KoinComponent {
+    onReplaceCurrent: (Config) -> Unit,
+) : BaseComponent(context, onNavigate, onBack, onReplaceCurrent), KoinComponent {
     private val session: NodeSessionController by inject()
     private val services: AppPlatformServices by inject()
 
@@ -172,7 +173,7 @@ class InviteComponent(
                             existing.participantPeerIds.contains(peerId)
                     }
                 }
-                for (attempt in 0 until 40) {
+                for (attempt in 0 until 75) {
                     if (pairedPeer != null && conversation != null) break
                     if (attempt > 0) {
                         delay(200)
@@ -221,13 +222,12 @@ class InviteComponent(
             _state.update {
                 it.copy(
                     isPairing = false,
-                    scanInput = "",
-                    message = if (pairing.paired) "Собеседник добавлен" else "Запрос отправлен",
+                    scanInput = if (pairing.paired) "" else it.scanInput,
+                    message = if (pairing.paired) "Собеседник добавлен" else "Ждём подтверждение",
                 )
             }
 
             if (!pairing.paired) {
-                onBack()
                 return@launch
             }
 
@@ -241,10 +241,8 @@ class InviteComponent(
                 null
             }
 
-            onBack()
             if (chatConfig != null) {
-                delay(50)
-                onNavigate(chatConfig)
+                onReplaceCurrent(chatConfig)
             }
         }
     }

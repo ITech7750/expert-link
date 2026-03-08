@@ -168,6 +168,16 @@ class ChatListComponent(
                         summaries = summaries,
                     )
                 }
+                .groupBy { item ->
+                    if (item.peerId != null) {
+                        "direct:${item.peerId}"
+                    } else {
+                        "chat:${item.conversationId}"
+                    }
+                }
+                .map { (_, groupedItems) ->
+                    groupedItems.maxByOrNull { it.updatedAt }!!
+                }
                 .sortedByDescending { it.updatedAt }
             val incoming = node.observeIncomingCalls()
                 .sortedByDescending { it.updatedAt }
