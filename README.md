@@ -45,21 +45,31 @@ expert-link — децентрализованная система связи (
 
 ### Схема модулей
 ```mermaid
+
 flowchart LR
   subgraph Public
-    contract[contract\nMeshNode + DTO]
+    contract[contract
+    MeshNode + DTO]
   end
   subgraph Backend
-    backend[backend\nFacade]
-    data[backend:data\nDomain]
-    app[backend:application\nUse-cases]
-    infra[backend:infra\nAdapters]
-    runtime[backend:runtime\nBootstrap + Ktor]
+    backend[backend
+    Facade]
+    data[backend:data
+    Domain]
+    app[backend:application
+    Use-cases]
+    infra[backend:infra
+    Adapters]
+    runtime[backend:runtime
+    Bootstrap + Ktor]
   end
   subgraph Hosts
-    compose[composeApp\nDesktop/Android UI]
-    simulator[simulator\nScenarios]
-    bootstrap[bootstrap\nCLI host]
+    compose[composeApp
+    Desktop/Android UI]
+    simulator[simulator
+    Scenarios]
+    bootstrap[bootstrap
+    CLI host]
   end
 
   contract --> backend
@@ -75,6 +85,7 @@ flowchart LR
   simulator --> backend
   simulator --> contract
   bootstrap --> backend
+
 ```
 
 ### Поток входящего пакета
