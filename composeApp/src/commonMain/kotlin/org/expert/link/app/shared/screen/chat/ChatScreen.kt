@@ -360,43 +360,53 @@ fun ChatScreen(component: ChatComponent) {
             }
 
             if (activeVideoCall == null) {
-                Surface(
-                    tonalElevation = 4.dp,
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    shape = RoundedCornerShape(28.dp),
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Row(
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .widthIn(max = 680.dp),
+                        tonalElevation = 4.dp,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = RoundedCornerShape(28.dp),
                     ) {
-                        OutlinedTextField(
-                            value = state.draft,
-                            onValueChange = component::updateDraft,
-                            modifier = Modifier.weight(1f),
-                            label = { Text("Сообщение") },
-                            minLines = 1,
-                            maxLines = 5,
-                            shape = RoundedCornerShape(22.dp),
-                        )
-                        FilledIconButton(
-                            onClick = component::sendMessage,
-                            enabled = state.draft.isNotBlank() && !state.isSending,
-                            modifier = Modifier.size(56.dp),
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (state.isSending) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Outlined.Send,
-                                    contentDescription = null,
-                                )
+                            OutlinedTextField(
+                                value = state.draft,
+                                onValueChange = component::updateDraft,
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Сообщение") },
+                                minLines = 1,
+                                maxLines = 5,
+                                shape = RoundedCornerShape(22.dp),
+                            )
+                            FilledIconButton(
+                                onClick = component::sendMessage,
+                                enabled = state.draft.isNotBlank() && !state.isSending,
+                                modifier = Modifier.size(56.dp),
+                            ) {
+                                if (state.isSending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Outlined.Send,
+                                        contentDescription = null,
+                                    )
+                                }
                             }
                         }
                     }
@@ -875,37 +885,45 @@ private fun ThreadSheet(
                     }
                 }
 
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    shape = RoundedCornerShape(24.dp),
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Row(
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Bottom,
+                            .widthIn(max = 720.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = RoundedCornerShape(24.dp),
                     ) {
-                        OutlinedTextField(
-                            value = draft,
-                            onValueChange = onDraftChange,
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 56.dp),
-                            label = { Text("Ответ") },
-                            minLines = 1,
-                            maxLines = 3,
-                            shape = RoundedCornerShape(22.dp),
-                        )
-                        FilledIconButton(
-                            onClick = onSend,
-                            enabled = draft.isNotBlank() && !isLoading,
-                            modifier = Modifier.size(56.dp),
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Bottom,
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.Send,
-                                contentDescription = null,
+                            OutlinedTextField(
+                                value = draft,
+                                onValueChange = onDraftChange,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 56.dp),
+                                label = { Text("Ответ") },
+                                minLines = 1,
+                                maxLines = 3,
+                                shape = RoundedCornerShape(22.dp),
                             )
+                            FilledIconButton(
+                                onClick = onSend,
+                                enabled = draft.isNotBlank() && !isLoading,
+                                modifier = Modifier.size(56.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.Send,
+                                    contentDescription = null,
+                                )
+                            }
                         }
                     }
                 }

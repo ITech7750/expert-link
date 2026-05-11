@@ -2,6 +2,8 @@ package org.expert.link.app.shared.screen.profile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,7 +43,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import com.arkivanov.essenty.backhandler.BackCallback
 import com.arkivanov.essenty.backhandler.BackHandler
+import kotlinx.coroutines.launch
 import org.expert.link.app.shared.screen.components.initials
+import org.expert.link.app.shared.ui.components.asUiText
 import org.expert.link.app.shared.ui.screens.ChatsScreen
 import org.expert.link.app.shared.ui.screens.ContactsScreen
 import org.expert.link.app.shared.ui.screens.DiagnosticsScreen
@@ -50,8 +55,14 @@ import org.expert.link.app.shared.ui.screens.SettingsScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(component: ProfileComponent) {
+fun ProfileScreen(
+    component: ProfileComponent,
+    showBack: Boolean = true,
+    showTopBar: Boolean = true,
+    showTabs: Boolean = true,
+) {
     val state by component.state.collectAsState()
+    val hybridState by component.hybridStore.state.collectAsState()
     val sessionState by component.sessionState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -69,16 +80,34 @@ fun ProfileScreen(component: ProfileComponent) {
         }
     }
 
+    LaunchedEffect(hybridState.error) {
+        hybridState.error?.let {
+            snackbarHostState.showSnackbar(it)
+            component.hybridStore.clearError()
+        }
+    }
+
+    LaunchedEffect(hybridState.message) {
+        hybridState.message?.let {
+            snackbarHostState.showSnackbar(it)
+            component.hybridStore.clearMessage()
+        }
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Профиль") },
-                navigationIcon = {
-                    IconButton(onClick = component::goBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Назад")
-                    }
-                },
-            )
+            if (showTopBar) {
+                TopAppBar(
+                    title = { Text("Профиль") },
+                    navigationIcon = {
+                        if (showBack) {
+                            IconButton(onClick = component::goBack) {
+                                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Назад")
+                            }
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
@@ -95,22 +124,24 @@ fun ProfileScreen(component: ProfileComponent) {
                 )
                 .padding(paddingValues),
         ) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(ProfileTab.entries) { tab ->
-                    FilterChip(
-                        selected = state.selectedTab == tab,
-                        onClick = { component.selectTab(tab) },
-                        label = { Text(tab.title) },
-                    )
+            if (showTabs) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(ProfileTab.entries) { tab ->
+                        FilterChip(
+                            selected = state.selectedTab == tab,
+                            onClick = { component.selectTab(tab) },
+                            label = { Text(tab.title) },
+                        )
+                    }
                 }
             }
 
             androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                when (state.selectedTab) {
+                when (if (showTabs) state.selectedTab else ProfileTab.PROFILE) {
                     ProfileTab.OVERVIEW -> HomeScreen(
                         sessionState = sessionState,
                         store = component.homeStore,
@@ -121,7 +152,7 @@ fun ProfileScreen(component: ProfileComponent) {
                         onDiagnostics = { component.selectTab(ProfileTab.METRICS) },
                         onSettings = { component.selectTab(ProfileTab.SETTINGS) },
                     )
-                    ProfileTab.PROFILE -> AccountTab(component, state)
+                    ProfileTab.PROFILE -> AccountTab(component, state, hybridState)
                     ProfileTab.CHATS -> ChatsScreen(
                         store = component.chatsStore,
                         onOpenConversation = { conversationId, peerId ->
@@ -154,11 +185,14 @@ fun ProfileScreen(component: ProfileComponent) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AccountTab(
     component: ProfileComponent,
     state: ProfileState,
+    hybridState: org.expert.link.app.shared.presentation.HybridUiState,
 ) {
+    val scope = rememberCoroutineScope()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
@@ -210,7 +244,12 @@ private fun AccountTab(
                         shape = MaterialTheme.shapes.large,
                     )
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(
+                        maxItemsInEachRow = 2,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Button(
                             onClick = component::save,
                             enabled = !state.isSaving && state.draftName.isNotBlank(),
@@ -220,6 +259,158 @@ private fun AccountTab(
                         Button(onClick = component::openInvite) {
                             Text("Контакт")
                         }
+                    }
+                }
+            }
+        }
+
+        item {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        text = "Central backend",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = hybridState.hybridState?.connectivityMode?.asUiText() ?: "Не настроен",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    OutlinedTextField(
+                        value = hybridState.baseUrl,
+                        onValueChange = component.hybridStore::updateBaseUrl,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Адрес central backend") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.large,
+                    )
+
+                    OutlinedTextField(
+                        value = hybridState.username,
+                        onValueChange = component.hybridStore::updateUsername,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Логин") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.large,
+                    )
+
+                    OutlinedTextField(
+                        value = hybridState.password,
+                        onValueChange = component.hybridStore::updatePassword,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Пароль") },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.large,
+                    )
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(hybridState.organizations) { organization ->
+                            FilterChip(
+                                selected = organization.active,
+                                onClick = {
+                                    scope.launch {
+                                        component.hybridStore.selectOrganization(organization.organizationId)
+                                    }
+                                },
+                                label = { Text(organization.name) },
+                            )
+                        }
+                    }
+
+                    FlowRow(
+                        maxItemsInEachRow = 2,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    component.hybridStore.login()
+                                }
+                            },
+                            enabled = !hybridState.loading,
+                        ) {
+                            Text(if (hybridState.loading) "Подключение..." else "Войти")
+                        }
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    component.hybridStore.syncNow()
+                                }
+                            },
+                            enabled = !hybridState.loading,
+                        ) {
+                            Text("Синхронизировать")
+                        }
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    component.hybridStore.logout()
+                                }
+                            },
+                            enabled = !hybridState.loading && hybridState.authState?.authenticated == true,
+                        ) {
+                            Text("Выйти")
+                        }
+                    }
+
+                    hybridState.authState?.userProfile?.let { profile ->
+                        Text(
+                            text = "Пользователь: ${profile.displayName}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    hybridState.syncStatus?.let { sync ->
+                        Text(
+                            text = "Очередь: ${sync.pendingChanges}, конфликты: ${sync.conflicts}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    hybridState.workspace?.let { workspace ->
+                        workspace.dashboard?.let { dashboard ->
+                            Text(
+                                text = "Сводка организации: участники ${dashboard.memberships}, роли ${dashboard.roles}, локации ${dashboard.locations}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            text = "Справочники: локации ${workspace.locations.size}, подразделения ${workspace.departments.size}, ЦФО ${workspace.costCenters.size}, счета ${workspace.bankAccounts.size}, контрагенты ${workspace.parties.size}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (workspace.permissionDefinitions.isNotEmpty()) {
+                            Text(
+                                text = "Права: ${workspace.permissionDefinitions.size}, relay-узлы: ${workspace.relayNodes.size}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    hybridState.pendingChanges.takeIf { it.isNotEmpty() }?.let { changes ->
+                        Text(
+                            text = "Ожидают отправки: ${changes.joinToString(limit = 3) { it.changeType }}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    hybridState.conflicts.takeIf { it.isNotEmpty() }?.let { conflicts ->
+                        Text(
+                            text = "Требуют разбора: ${conflicts.joinToString(limit = 2) { it.aggregateType }}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }

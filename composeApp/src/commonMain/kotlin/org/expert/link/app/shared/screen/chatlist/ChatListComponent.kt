@@ -121,6 +121,10 @@ class ChatListComponent(
         onNavigate(Config.Profile)
     }
 
+    fun openInventory() {
+        onNavigate(Config.Inventory)
+    }
+
     fun openIncomingCall() {
         val incoming = state.value.incomingCall ?: return
         onNavigate(

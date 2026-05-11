@@ -1,6 +1,7 @@
 package org.expert.link.mesh.contract.config
 
 import kotlinx.serialization.Serializable
+import org.expert.link.mesh.contract.model.MeshCentralConfig
 
 /** Режим работы встроенного mesh-узла. */
 @Serializable
@@ -61,6 +62,7 @@ data class MeshNodeConfig(
     val retry: MeshRetryConfig = MeshRetryConfig(),
     val fileTransfer: MeshFileTransferConfig = MeshFileTransferConfig(),
     val relay: MeshRelayConfig? = null,
+    val central: MeshCentralConfig? = null,
     val capabilities: Set<String> = setOf("chat", "file", "call"),
     val staticPeers: List<MeshStaticPeer> = emptyList(),
 )

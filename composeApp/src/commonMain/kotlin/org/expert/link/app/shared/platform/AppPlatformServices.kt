@@ -7,6 +7,8 @@ import org.expert.link.mesh.contract.config.MeshNodeConfig
 import org.expert.link.mesh.contract.config.MeshNodeMode
 import org.expert.link.mesh.contract.config.MeshRelayConfig
 import org.expert.link.mesh.contract.config.MeshRetryConfig
+import org.expert.link.mesh.contract.model.MeshFileDescriptor
+import org.expert.link.mesh.contract.model.MeshInventoryExportFormat
 import kotlin.random.Random
 
 /** Возможности host-платформы, доступные shared UI. */
@@ -15,7 +17,10 @@ data class PlatformCapabilities(
     val canShareText: Boolean = false,
     val canShareFiles: Boolean = false,
     val canSaveFiles: Boolean = false,
+    val canPrintFiles: Boolean = false,
+    val canOpenFiles: Boolean = false,
     val canRenderQr: Boolean = false,
+    val canRenderBarcode: Boolean = false,
     val canScanQr: Boolean = false,
     val canSwitchCamera: Boolean = false,
     val canPickFile: Boolean = false,
@@ -33,6 +38,32 @@ data class QrCodeMatrix(
 
     fun isDark(x: Int, y: Int): Boolean = darkModules[(y * size) + x]
 }
+
+/** Простое представление линейного штрихкода для отрисовки в Compose. */
+data class BarcodeMatrix(
+    val width: Int,
+    val height: Int,
+    val darkModules: List<Boolean>,
+) {
+    init {
+        require(darkModules.size == width * height) { "Размер barcode-матрицы не совпадает с количеством модулей" }
+    }
+
+    fun isDark(x: Int, y: Int): Boolean = darkModules[(y * width) + x]
+}
+
+data class InventoryExportDocument(
+    val title: String,
+    val subtitle: String? = null,
+    val summary: List<Pair<String, String>> = emptyList(),
+    val columns: List<String> = emptyList(),
+    val rows: List<List<String>> = emptyList(),
+)
+
+data class LocalArtifact(
+    val path: String,
+    val descriptor: MeshFileDescriptor,
+)
 
 /** Платформенные сервисы, которые shared UI получает от host-модуля. */
 expect class AppPlatformServices(args: List<String> = emptyList()) {
@@ -57,14 +88,42 @@ expect class AppPlatformServices(args: List<String> = emptyList()) {
     /** Копирует файл в системную папку загрузок. */
     suspend fun saveFileToDownloads(path: String, fileName: String): Result<String?>
 
+    /** Открывает локальный файл через системное приложение. */
+    suspend fun openFile(path: String): Result<Unit>
+
+    /** Сохраняет локальную копию файла в управляемое хранилище приложения. */
+    suspend fun cacheLocalArtifact(path: String, fileName: String): Result<String>
+
+    /** Формирует локальный файл отчёта/экспорта по данным инвентаризации. */
+    suspend fun createInventoryExportArtifact(
+        document: InventoryExportDocument,
+        format: MeshInventoryExportFormat,
+        suggestedFileName: String,
+    ): Result<LocalArtifact>
+
+    /** Пытается найти локальный artifact по имени файла в рабочих каталогах приложения. */
+    suspend fun resolveLocalArtifactPath(fileName: String): Result<String?>
+
+    /** Печатает файл через системный print dialog, если поддерживается платформой. */
+    suspend fun printFile(path: String): Result<Unit>
+
     /** Открывает системный выбор файла. */
     suspend fun pickFile(): Result<String?>
+
+    /** Описывает локальный файл для последующего вложения. */
+    suspend fun describeFile(path: String): Result<MeshFileDescriptor>
 
     /** Запускает сканирование QR-кода и возвращает считанную строку. */
     suspend fun scanQr(): Result<String?>
 
     /** Строит QR-код для строки invite, если платформа это поддерживает. */
     fun buildQrCode(text: String): QrCodeMatrix?
+
+    /** Строит barcode-представление для строки маркировки. */
+    fun buildBarcode(text: String): BarcodeMatrix?
+
+    /** Делится QR-кодом как изображением PNG. */
+    suspend fun shareQrImage(label: String, text: String): Result<Unit>
 }
 
 /** Строит базовую конфигурацию узла для demo-клиента. */

@@ -1,6 +1,7 @@
 package org.expert.link.mesh.bootstrap.config
 
 import kotlinx.serialization.Serializable
+import org.expert.link.mesh.domain.model.hybrid.CentralNodeConfiguration
 
 /** Режим работы узла. */
 @Serializable
@@ -61,6 +62,7 @@ data class NodeConfiguration(
     val retrySettings: RetrySettings = RetrySettings(),
     val fileTransferSettings: FileTransferSettings = FileTransferSettings(),
     val relayClientSettings: RelayClientSettings? = null,
+    val centralConfiguration: CentralNodeConfiguration? = null,
     val capabilities: Set<String> = setOf("chat", "file", "call"),
     val staticPeers: List<StaticPeerConfig> = emptyList(),
 )

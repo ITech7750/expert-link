@@ -3,8 +3,8 @@ package org.expert.link.app.shared.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -19,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,14 +36,32 @@ import kotlinx.coroutines.delay
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import org.expert.link.app.shared.platform.BarcodeMatrix
 import org.expert.link.app.shared.platform.QrCodeMatrix
 import org.expert.link.mesh.contract.model.MeshCallStatus
+import org.expert.link.mesh.contract.model.MeshCentralConnectivityMode
 import org.expert.link.mesh.contract.model.MeshConnectivityMode
 import org.expert.link.mesh.contract.model.MeshEndpointSource
 import org.expert.link.mesh.contract.model.MeshEventCategory
 import org.expert.link.mesh.contract.model.MeshFileTransferSession
 import org.expert.link.mesh.contract.model.MeshFileTransferStatus
 import org.expert.link.mesh.contract.model.MeshHostRole
+import org.expert.link.mesh.contract.model.MeshInventoryCondition
+import org.expert.link.mesh.contract.model.MeshInventoryAcceptanceStatus
+import org.expert.link.mesh.contract.model.MeshInventoryConfirmationStatus
+import org.expert.link.mesh.contract.model.MeshInventoryIncidentSeverity
+import org.expert.link.mesh.contract.model.MeshInventoryIncidentStatus
+import org.expert.link.mesh.contract.model.MeshInventoryPresenceStatus
+import org.expert.link.mesh.contract.model.MeshInventoryReminderStatus
+import org.expert.link.mesh.contract.model.MeshInventoryExportStatus
+import org.expert.link.mesh.contract.model.MeshInventoryPrintStatus
+import org.expert.link.mesh.contract.model.MeshInventoryReviewStatus
+import org.expert.link.mesh.contract.model.MeshInventoryScanResultStatus
+import org.expert.link.mesh.contract.model.MeshInventorySessionReviewStatus
+import org.expert.link.mesh.contract.model.MeshInventorySessionStatus
+import org.expert.link.mesh.contract.model.MeshInventoryStatus
+import org.expert.link.mesh.contract.model.MeshInventorySyncStatus
+import org.expert.link.mesh.contract.model.MeshInventoryWorkflowStatus
 import org.expert.link.mesh.contract.model.MeshMessageDeliveryStatus
 import org.expert.link.mesh.contract.model.MeshRelayMode
 import org.expert.link.mesh.contract.model.MeshRouteMode
@@ -133,6 +152,15 @@ fun MeshConnectivityMode.asUiText(): String = when (this) {
     MeshConnectivityMode.DEGRADED -> "Деградация"
 }
 
+fun MeshCentralConnectivityMode.asUiText(): String = when (this) {
+    MeshCentralConnectivityMode.OFFLINE -> "Оффлайн"
+    MeshCentralConnectivityMode.MESH_ONLY -> "Только mesh"
+    MeshCentralConnectivityMode.CENTRAL_AVAILABLE -> "Central доступен"
+    MeshCentralConnectivityMode.CENTRAL_DEGRADED -> "Central недоступен"
+    MeshCentralConnectivityMode.RECONNECTING -> "Переподключение"
+    MeshCentralConnectivityMode.CONFLICT_REVIEW_REQUIRED -> "Нужен разбор конфликта"
+}
+
 fun MeshRelayMode.asUiText(): String = when (this) {
     MeshRelayMode.DISABLED -> "Выключен"
     MeshRelayMode.STANDBY -> "Ожидание"
@@ -155,7 +183,172 @@ fun MeshEventCategory.asUiText(): String = when (this) {
     MeshEventCategory.CALL -> "Звонки"
     MeshEventCategory.SECURITY -> "Безопасность"
     MeshEventCategory.ROUTING -> "Маршруты"
+    MeshEventCategory.INVENTORY -> "Инвентаризация"
     MeshEventCategory.SYSTEM -> "Система"
+}
+
+fun MeshInventoryStatus.asUiText(): String = when (this) {
+    MeshInventoryStatus.DRAFT -> "Черновик"
+    MeshInventoryStatus.ADDED -> "Добавлен"
+    MeshInventoryStatus.UNDER_REVIEW -> "На проверке"
+    MeshInventoryStatus.CONFIRMED -> "Подтверждён"
+    MeshInventoryStatus.REJECTED -> "Отклонён"
+    MeshInventoryStatus.REQUIRES_UPDATE -> "Нужны правки"
+    MeshInventoryStatus.ARCHIVED -> "Архив"
+}
+
+fun MeshInventoryStatus.asTone(): ChipTone = when (this) {
+    MeshInventoryStatus.CONFIRMED -> ChipTone.SUCCESS
+    MeshInventoryStatus.REJECTED -> ChipTone.ERROR
+    MeshInventoryStatus.REQUIRES_UPDATE -> ChipTone.WARNING
+    MeshInventoryStatus.UNDER_REVIEW -> ChipTone.INFO
+    MeshInventoryStatus.DRAFT,
+    MeshInventoryStatus.ADDED,
+    MeshInventoryStatus.ARCHIVED,
+    -> ChipTone.INFO
+}
+
+fun MeshInventorySyncStatus.asUiText(): String = when (this) {
+    MeshInventorySyncStatus.SYNCED -> "Синхронизировано"
+    MeshInventorySyncStatus.PENDING -> "Ожидает"
+    MeshInventorySyncStatus.CONFLICTED -> "Конфликт"
+}
+
+fun MeshInventorySyncStatus.asTone(): ChipTone = when (this) {
+    MeshInventorySyncStatus.SYNCED -> ChipTone.SUCCESS
+    MeshInventorySyncStatus.PENDING -> ChipTone.WARNING
+    MeshInventorySyncStatus.CONFLICTED -> ChipTone.ERROR
+}
+
+fun MeshInventoryIncidentSeverity.asUiText(): String = when (this) {
+    MeshInventoryIncidentSeverity.INFO -> "Инфо"
+    MeshInventoryIncidentSeverity.LOW -> "Низкая"
+    MeshInventoryIncidentSeverity.MEDIUM -> "Средняя"
+    MeshInventoryIncidentSeverity.HIGH -> "Высокая"
+    MeshInventoryIncidentSeverity.CRITICAL -> "Критичная"
+}
+
+fun MeshInventoryIncidentSeverity.asTone(): ChipTone = when (this) {
+    MeshInventoryIncidentSeverity.INFO -> ChipTone.INFO
+    MeshInventoryIncidentSeverity.LOW -> ChipTone.SUCCESS
+    MeshInventoryIncidentSeverity.MEDIUM -> ChipTone.WARNING
+    MeshInventoryIncidentSeverity.HIGH -> ChipTone.ERROR
+    MeshInventoryIncidentSeverity.CRITICAL -> ChipTone.ERROR
+}
+
+fun MeshInventoryIncidentStatus.asUiText(): String = when (this) {
+    MeshInventoryIncidentStatus.OPEN -> "Открыт"
+    MeshInventoryIncidentStatus.UNDER_REVIEW -> "На проверке"
+    MeshInventoryIncidentStatus.RESOLVED -> "Решён"
+    MeshInventoryIncidentStatus.DISMISSED -> "Отклонён"
+}
+
+fun MeshInventoryReminderStatus.asUiText(): String = when (this) {
+    MeshInventoryReminderStatus.PENDING -> "Ожидание"
+    MeshInventoryReminderStatus.SENT -> "Отправлено"
+    MeshInventoryReminderStatus.ACKNOWLEDGED -> "Подтверждено"
+    MeshInventoryReminderStatus.DISMISSED -> "Отменено"
+}
+
+fun MeshInventorySessionStatus.asUiText(): String = when (this) {
+    MeshInventorySessionStatus.DRAFT -> "Черновик"
+    MeshInventorySessionStatus.ACTIVE -> "Активна"
+    MeshInventorySessionStatus.UNDER_REVIEW -> "Инвентаризация"
+    MeshInventorySessionStatus.CLOSED -> "Закрыта"
+    MeshInventorySessionStatus.ARCHIVED -> "Архив"
+}
+
+fun MeshInventorySessionReviewStatus.asUiText(): String = when (this) {
+    MeshInventorySessionReviewStatus.PENDING -> "Ожидание"
+    MeshInventorySessionReviewStatus.IN_PROGRESS -> "В работе"
+    MeshInventorySessionReviewStatus.COMPLETED -> "Завершена"
+    MeshInventorySessionReviewStatus.REJECTED -> "Отклонена"
+}
+
+fun MeshInventoryReviewStatus.asUiText(): String = when (this) {
+    MeshInventoryReviewStatus.APPROVED -> "Подтверждено"
+    MeshInventoryReviewStatus.REJECTED -> "Отклонено"
+    MeshInventoryReviewStatus.REQUIRES_UPDATE -> "Нужны правки"
+}
+
+fun MeshInventoryWorkflowStatus.asUiText(): String = when (this) {
+    MeshInventoryWorkflowStatus.CREATED -> "Создана"
+    MeshInventoryWorkflowStatus.IN_PROGRESS -> "В процессе"
+    MeshInventoryWorkflowStatus.PASSED -> "Пройдена"
+    MeshInventoryWorkflowStatus.FAILED -> "Не пройдена"
+    MeshInventoryWorkflowStatus.REQUIRES_CORRECTION -> "Требует исправления"
+    MeshInventoryWorkflowStatus.SENT_TO_COMMISSION -> "Отправлена в комиссию"
+    MeshInventoryWorkflowStatus.COMPLETED -> "Завершена"
+}
+
+fun MeshInventoryWorkflowStatus.asTone(): ChipTone = when (this) {
+    MeshInventoryWorkflowStatus.PASSED,
+    MeshInventoryWorkflowStatus.COMPLETED,
+    -> ChipTone.SUCCESS
+    MeshInventoryWorkflowStatus.FAILED -> ChipTone.ERROR
+    MeshInventoryWorkflowStatus.REQUIRES_CORRECTION,
+    MeshInventoryWorkflowStatus.SENT_TO_COMMISSION,
+    -> ChipTone.WARNING
+    MeshInventoryWorkflowStatus.CREATED,
+    MeshInventoryWorkflowStatus.IN_PROGRESS,
+    -> ChipTone.INFO
+}
+
+fun MeshInventoryPresenceStatus.asUiText(): String = when (this) {
+    MeshInventoryPresenceStatus.UNCHECKED -> "Не отмечено"
+    MeshInventoryPresenceStatus.PRESENT -> "Есть в наличии"
+    MeshInventoryPresenceStatus.ABSENT -> "Нет в наличии"
+}
+
+fun MeshInventoryAcceptanceStatus.asUiText(): String = when (this) {
+    MeshInventoryAcceptanceStatus.UNCHECKED -> "Не отмечено"
+    MeshInventoryAcceptanceStatus.ACCEPTED -> "Принят"
+    MeshInventoryAcceptanceStatus.NOT_ACCEPTED -> "Не принят"
+}
+
+fun MeshInventoryConfirmationStatus.asUiText(): String = when (this) {
+    MeshInventoryConfirmationStatus.UNCHECKED -> "Не подтверждён"
+    MeshInventoryConfirmationStatus.CONFIRMED -> "Подтверждён"
+    MeshInventoryConfirmationStatus.NOT_CONFIRMED -> "Не подтверждён"
+}
+
+fun MeshInventoryScanResultStatus.asUiText(): String = when (this) {
+    MeshInventoryScanResultStatus.RESOLVED -> "Объект найден"
+    MeshInventoryScanResultStatus.INACTIVE -> "Код неактивен"
+    MeshInventoryScanResultStatus.NOT_FOUND -> "Не найдено"
+    MeshInventoryScanResultStatus.INVALID -> "Неверный код"
+    MeshInventoryScanResultStatus.ERROR -> "Ошибка"
+}
+
+fun MeshInventoryCondition.asUiText(): String = when (this) {
+    MeshInventoryCondition.NEW -> "Новое"
+    MeshInventoryCondition.GOOD -> "Хорошее"
+    MeshInventoryCondition.FAIR -> "Удовлетворительное"
+    MeshInventoryCondition.NEEDS_REPAIR -> "Требует ремонта"
+    MeshInventoryCondition.OUT_OF_SERVICE -> "Не используется"
+    MeshInventoryCondition.UNKNOWN -> "Неизвестно"
+}
+
+fun MeshInventoryExportStatus.asUiText(): String = when (this) {
+    MeshInventoryExportStatus.REQUESTED -> "Запрошен"
+    MeshInventoryExportStatus.IN_PROGRESS -> "Готовится"
+    MeshInventoryExportStatus.COMPLETED -> "Готов"
+    MeshInventoryExportStatus.FAILED -> "Ошибка"
+    MeshInventoryExportStatus.CANCELLED -> "Отменён"
+}
+
+fun MeshInventoryPrintStatus.asUiText(): String = when (this) {
+    MeshInventoryPrintStatus.REQUESTED -> "Запрошено"
+    MeshInventoryPrintStatus.GENERATED -> "PDF готов"
+    MeshInventoryPrintStatus.FAILED -> "Ошибка"
+    MeshInventoryPrintStatus.PRINTED -> "Напечатано"
+}
+
+fun MeshInventoryPrintStatus.asTone(): ChipTone = when (this) {
+    MeshInventoryPrintStatus.REQUESTED -> ChipTone.INFO
+    MeshInventoryPrintStatus.GENERATED -> ChipTone.SUCCESS
+    MeshInventoryPrintStatus.PRINTED -> ChipTone.SUCCESS
+    MeshInventoryPrintStatus.FAILED -> ChipTone.ERROR
 }
 
 fun MeshMessageDeliveryStatus.asTone(): ChipTone = when (this) {
@@ -237,20 +430,20 @@ fun BadgeChip(
 ) {
     val colors = when (tone) {
         ChipTone.INFO -> AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         ChipTone.SUCCESS -> AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
-            labelColor = MaterialTheme.colorScheme.secondary,
+            containerColor = Color(0xFFDDF5E5),
+            labelColor = Color(0xFF1F6B36),
         )
         ChipTone.WARNING -> AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f),
-            labelColor = MaterialTheme.colorScheme.tertiary,
+            containerColor = Color(0xFFFFF0C2),
+            labelColor = Color(0xFF8A5A00),
         )
         ChipTone.ERROR -> AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.14f),
-            labelColor = MaterialTheme.colorScheme.error,
+            containerColor = Color(0xFFFFE2DE),
+            labelColor = Color(0xFFB42318),
         )
     }
     AssistChip(
@@ -258,6 +451,10 @@ fun BadgeChip(
         enabled = false,
         label = { Text(text = text) },
         colors = colors,
+        border = AssistChipDefaults.assistChipBorder(
+            enabled = true,
+            borderColor = MaterialTheme.colorScheme.outlineVariant,
+        ),
         modifier = modifier,
     )
 }
@@ -272,14 +469,28 @@ fun SectionCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(24.dp),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                subtitle?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             content()
         }
@@ -288,13 +499,52 @@ fun SectionCard(
 
 @Composable
 fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontWeight = FontWeight.Medium)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val compact = maxWidth < 420.dp
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            if (compact) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -317,15 +567,25 @@ fun StatusBanner(text: String, tone: ChipTone) {
         color = textColor,
         modifier = Modifier
             .fillMaxWidth()
-            .background(containerColor, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .background(containerColor, RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     )
 }
 
 @Composable
 fun EmptyState(title: String, text: String) {
     SectionCard(title = title) {
-        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(20.dp),
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -396,6 +656,40 @@ fun QrCodeCard(
                             color = Color.Black,
                             topLeft = Offset(x * cellSize, y * cellSize),
                             size = Size(cellSize, cellSize),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BarcodeCard(
+    matrix: BarcodeMatrix,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    barcodeHeight: Dp = 140.dp,
+) {
+    SectionCard(title = title, subtitle = subtitle, modifier = modifier) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .size(width = 320.dp, height = barcodeHeight)
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                .padding(12.dp),
+        ) {
+            val cellWidth = size.width / matrix.width.toFloat()
+            val cellHeight = size.height / matrix.height.toFloat()
+            for (y in 0 until matrix.height) {
+                for (x in 0 until matrix.width) {
+                    if (matrix.isDark(x, y)) {
+                        drawRect(
+                            color = Color.Black,
+                            topLeft = Offset(x * cellWidth, y * cellHeight),
+                            size = Size(cellWidth, cellHeight),
                         )
                     }
                 }

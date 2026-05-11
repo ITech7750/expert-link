@@ -18,6 +18,7 @@ import org.expert.link.mesh.application.service.DeliveryTrackingService
 import org.expert.link.mesh.application.service.DiscoveryOrchestrationService
 import org.expert.link.mesh.application.service.EventLogService
 import org.expert.link.mesh.application.service.FileTransferService
+import org.expert.link.mesh.application.service.InventorySyncService
 import org.expert.link.mesh.application.service.LocalProfileService
 import org.expert.link.mesh.application.service.MessageEncryptionService
 import org.expert.link.mesh.application.service.NodeMetricsService
@@ -56,6 +57,9 @@ import org.expert.link.mesh.domain.model.network.FileChunkPayload
 import org.expert.link.mesh.domain.model.network.FileComplete
 import org.expert.link.mesh.domain.model.network.FileOffer
 import org.expert.link.mesh.domain.model.network.FileResumeRequestPayload
+import org.expert.link.mesh.domain.model.network.InventoryEventPacket
+import org.expert.link.mesh.domain.model.network.InventorySyncRequestPayload
+import org.expert.link.mesh.domain.model.network.InventorySyncResponsePayload
 import org.expert.link.mesh.domain.model.network.PacketEnvelope
 import org.expert.link.mesh.domain.model.network.PacketType
 import org.expert.link.mesh.domain.model.network.PairAccept
@@ -100,6 +104,7 @@ class NodeLifecycleService(
     private val fileTransferService: FileTransferService,
     private val callSignalingService: CallSignalingService,
     private val callMediaService: CallMediaService,
+    private val inventorySyncService: InventorySyncService,
     private val discoveryPort: DiscoveryPort?,
     private val discoveryOrchestrationService: DiscoveryOrchestrationService?,
     private val reversePathRepositoryPort: ReversePathRepositoryPort,
@@ -128,6 +133,9 @@ class NodeLifecycleService(
         PacketType.CALL_INVITE,
         PacketType.CALL_SIGNAL,
         PacketType.CALL_HANGUP,
+        PacketType.INVENTORY_EVENT,
+        PacketType.INVENTORY_SYNC_REQUEST,
+        PacketType.INVENTORY_SYNC_RESPONSE,
     )
 
     private val logger = KotlinLogging.logger {}
@@ -354,6 +362,24 @@ class NodeLifecycleService(
             }
             PacketType.SYSTEM_EVENT -> {
                 messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as SystemEventPayload
+                TransportDeliveryResult(success = true, deliveredAt = now())
+            }
+            PacketType.INVENTORY_EVENT -> {
+                verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
+                val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as InventoryEventPacket
+                inventorySyncService.handleIncomingEvent(envelope, payload)
+                TransportDeliveryResult(success = true, deliveredAt = now())
+            }
+            PacketType.INVENTORY_SYNC_REQUEST -> {
+                verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
+                val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as InventorySyncRequestPayload
+                inventorySyncService.handleSyncRequest(envelope, payload)
+                TransportDeliveryResult(success = true, deliveredAt = now())
+            }
+            PacketType.INVENTORY_SYNC_RESPONSE -> {
+                verifyTrustedEnvelope(envelope) ?: return TransportDeliveryResult(success = false, errorMessage = "Untrusted sender")
+                val payload = messageEncryptionService.decryptPayload(localProfile.privateKey, envelope.packetType, encryptedPayload) as InventorySyncResponsePayload
+                inventorySyncService.handleSyncResponse(payload)
                 TransportDeliveryResult(success = true, deliveredAt = now())
             }
         }

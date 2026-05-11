@@ -2,6 +2,8 @@ package org.expert.link.app.shared.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -1802,6 +1804,7 @@ private fun CallRow(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun DiagnosticsScreen(store: DiagnosticsStore) {
     val state by store.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -1817,7 +1820,12 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                 title = "Диагностика",
                 subtitle = "Служебный раздел для проверки сети и маршрутов"
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    maxItemsInEachRow = 3,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     DiagnosticsSection.entries.forEach { item ->
                         FilterChip(
                             selected = section == item,
@@ -1825,9 +1833,20 @@ fun DiagnosticsScreen(store: DiagnosticsStore) {
                             label = { Text(item.title) })
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { scope.launch { store.refresh() } }) { Text("Обновить") }
-                    OutlinedButton(onClick = { scope.launch { store.forceTopologyRefresh() } }) {
+                FlowRow(
+                    maxItemsInEachRow = 2,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    OutlinedButton(
+                        onClick = { scope.launch { store.refresh() } },
+                        modifier = Modifier.height(50.dp),
+                    ) { Text("Обновить") }
+                    OutlinedButton(
+                        onClick = { scope.launch { store.forceTopologyRefresh() } },
+                        modifier = Modifier.height(50.dp),
+                    ) {
                         Text(
                             "Пересобрать сеть"
                         )
@@ -2066,6 +2085,7 @@ private fun EventRow(event: org.expert.link.mesh.contract.model.MeshEventLogEntr
         MeshEventCategory.SECURITY -> ChipTone.ERROR
         MeshEventCategory.ROUTING,
         MeshEventCategory.DISCOVERY,
+        MeshEventCategory.INVENTORY,
             -> ChipTone.INFO
 
         MeshEventCategory.PAIRING,

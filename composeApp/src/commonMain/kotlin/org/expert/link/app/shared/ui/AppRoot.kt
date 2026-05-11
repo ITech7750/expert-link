@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import com.arkivanov.decompose.extensions.compose.stack.Children
 import org.expert.link.app.shared.navigation.RootComponent
 import org.expert.link.app.shared.ui.theme.AppTheme
@@ -19,8 +20,9 @@ fun ExpertLinkApp(rootComponent: RootComponent) {
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHighest,
-                            androidx.compose.material3.MaterialTheme.colorScheme.surface,
+                            androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
+                            androidx.compose.material3.MaterialTheme.colorScheme.background,
+                            Color(0xFFEFF4F3),
                         ),
                     ),
                 ),

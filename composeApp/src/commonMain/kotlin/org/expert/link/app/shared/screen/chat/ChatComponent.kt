@@ -83,6 +83,7 @@ class ChatComponent(
     private val conversationId: String,
     private val initialPeerId: String?,
     private val initialTitle: String,
+    private val initialThreadRootMessageId: String?,
 ) : BaseComponent(context, onNavigate, onBack), KoinComponent {
     private val session: NodeSessionController by inject()
     private val services: AppPlatformServices by inject()
@@ -93,6 +94,8 @@ class ChatComponent(
             conversationId = conversationId,
             peerId = initialPeerId,
             title = initialTitle,
+            selectedThreadRootMessageId = initialThreadRootMessageId,
+            isThreadLoading = initialThreadRootMessageId != null,
         ),
     )
     val state: StateFlow<ChatState> = _state.asStateFlow()

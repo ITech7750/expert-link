@@ -15,6 +15,7 @@ import org.expert.link.app.shared.presentation.ChatsStore
 import org.expert.link.app.shared.presentation.ContactsStore
 import org.expert.link.app.shared.presentation.DiagnosticsStore
 import org.expert.link.app.shared.presentation.HomeStore
+import org.expert.link.app.shared.presentation.HybridStore
 import org.expert.link.app.shared.presentation.NodeRuntimeStatus
 import org.expert.link.app.shared.presentation.NodeSessionController
 import org.expert.link.app.shared.presentation.NodeSessionState
@@ -26,7 +27,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 enum class ProfileTab(val title: String) {
-    OVERVIEW("Обзор"),
+    OVERVIEW("Главная"),
     PROFILE("Профиль"),
     CHATS("Чаты"),
     NETWORK("Сеть"),
@@ -66,6 +67,7 @@ class ProfileComponent(
     val transfersStore = TransfersStore(session)
     val callsStore = CallsStore(session)
     val diagnosticsStore = DiagnosticsStore(session)
+    val hybridStore = HybridStore(session)
     val settingsStore = SettingsStore(session)
 
     private val _state = MutableStateFlow(ProfileState())
@@ -201,7 +203,7 @@ class ProfileComponent(
     private suspend fun refreshTab(tab: ProfileTab) {
         when (tab) {
             ProfileTab.OVERVIEW -> homeStore.refresh()
-            ProfileTab.PROFILE -> Unit
+            ProfileTab.PROFILE -> hybridStore.refresh()
             ProfileTab.CHATS -> chatsStore.refresh()
             ProfileTab.NETWORK -> nearbyStore.refresh()
             ProfileTab.CONTACTS -> contactsStore.refresh()

@@ -36,8 +36,8 @@ internal object AndroidQrScanner {
         withContext(Dispatchers.Main) {
             currentLauncher.launch(
                 ScanOptions().apply {
-                    setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                    setPrompt("Наведите камеру на QR-код приглашения")
+                    setDesiredBarcodeFormats(ScanOptions.ALL_CODE_TYPES)
+                    setPrompt("Наведите камеру на QR-код или штрихкод")
                     setBeepEnabled(false)
                     setOrientationLocked(false)
                 },
@@ -46,4 +46,3 @@ internal object AndroidQrScanner {
         return@withLock deferred.await()
     }
 }
-
