@@ -14,7 +14,15 @@ import org.expert.link.mesh.application.factory.PacketEnvelopeFactory
 import org.expert.link.mesh.application.service.BlockListService
 import org.expert.link.mesh.application.service.CallSignalingService
 import org.expert.link.mesh.application.service.CallMediaService
+import org.expert.link.mesh.application.service.CentralAttachmentSyncService
+import org.expert.link.mesh.application.service.CentralAuthService
+import org.expert.link.mesh.application.service.CentralExportIntegrationService
+import org.expert.link.mesh.application.service.CentralOrganizationAccessService
+import org.expert.link.mesh.application.service.CentralOrganizationWorkspaceService
+import org.expert.link.mesh.application.service.CentralSyncOrchestrationService
+import org.expert.link.mesh.application.service.ConflictStateService
 import org.expert.link.mesh.application.service.ChatMessagingService
+import org.expert.link.mesh.application.service.ConnectivityModeService
 import org.expert.link.mesh.application.service.ConnectivityStrategyService
 import org.expert.link.mesh.application.service.DeduplicationService
 import org.expert.link.mesh.application.service.DeliveryTrackingService
@@ -23,9 +31,29 @@ import org.expert.link.mesh.application.service.EventLogService
 import org.expert.link.mesh.application.service.FileResumeService
 import org.expert.link.mesh.application.service.FileTransferService
 import org.expert.link.mesh.application.service.GroupChatService
+import org.expert.link.mesh.application.service.InventoryCatalogService
+import org.expert.link.mesh.application.service.InventoryChangeLogService
+import org.expert.link.mesh.application.service.InventoryCodeService
+import org.expert.link.mesh.application.service.InventoryDashboardService
+import org.expert.link.mesh.application.service.InventoryDiscussionService
+import org.expert.link.mesh.application.service.InventoryEventApplier
+import org.expert.link.mesh.application.service.InventoryEventService
+import org.expert.link.mesh.application.service.InventoryExportService
+import org.expert.link.mesh.application.service.InventoryIncidentService
+import org.expert.link.mesh.application.service.InventoryItemService
+import org.expert.link.mesh.application.service.InventoryLabelService
+import org.expert.link.mesh.application.service.InventoryOrganizationService
+import org.expert.link.mesh.application.service.InventoryOwnershipService
+import org.expert.link.mesh.application.service.InventoryQueryService
+import org.expert.link.mesh.application.service.InventoryRbacService
+import org.expert.link.mesh.application.service.InventoryReviewService
+import org.expert.link.mesh.application.service.InventorySearchService
+import org.expert.link.mesh.application.service.InventorySessionService
+import org.expert.link.mesh.application.service.InventorySyncService
 import org.expert.link.mesh.application.service.LocalProfileService
 import org.expert.link.mesh.application.service.MessageEncryptionService
 import org.expert.link.mesh.application.service.NodeMetricsService
+import org.expert.link.mesh.application.service.OnlineOfflineStateService
 import org.expert.link.mesh.application.service.PacketSerializationService
 import org.expert.link.mesh.application.service.PacketSignatureService
 import org.expert.link.mesh.application.service.PairingService
@@ -36,6 +64,7 @@ import org.expert.link.mesh.application.service.RetryPolicyService
 import org.expert.link.mesh.application.service.RetrySchedulerService
 import org.expert.link.mesh.application.service.RoutingService
 import org.expert.link.mesh.application.service.SecurityIncidentService
+import org.expert.link.mesh.application.service.SyncQueueService
 import org.expert.link.mesh.application.service.ThreadService
 import org.expert.link.mesh.application.service.TopologyStateService
 import org.expert.link.mesh.bootstrap.config.NodeConfiguration
@@ -49,6 +78,7 @@ import org.expert.link.mesh.domain.model.network.PeerEndpoint
 import org.expert.link.mesh.domain.model.security.RateLimitRule
 import org.expert.link.mesh.domain.model.security.RateLimitScope
 import org.expert.link.mesh.domain.port.repository.PersistentRepositoryBundle
+import org.expert.link.mesh.domain.port.external.CentralClientBundle
 import org.expert.link.mesh.infrastructure.adapter.JvmMulticastSupportAdapter
 import org.expert.link.mesh.infrastructure.adapter.JvmNetworkEnvironmentAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryDedupCacheAdapter
@@ -56,6 +86,7 @@ import org.expert.link.mesh.infrastructure.repository.InMemoryEndpointCacheAdapt
 import org.expert.link.mesh.infrastructure.repository.InMemoryReversePathRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryRouteRepositoryAdapter
 import org.expert.link.mesh.infrastructure.client.RendezvousRelayClient
+import org.expert.link.mesh.infrastructure.client.DefaultCentralClientFactory
 import org.expert.link.mesh.infrastructure.adapter.BasicCryptoAdapter
 import org.expert.link.mesh.infrastructure.adapter.InMemoryDiscoveryAdapter
 import org.expert.link.mesh.infrastructure.adapter.UdpDiscoveryAdapter
@@ -79,6 +110,50 @@ import org.expert.link.mesh.infrastructure.repository.InMemoryPendingAckReposito
 import org.expert.link.mesh.infrastructure.repository.InMemoryThreadMessageRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryThreadRepositoryAdapter
 import org.expert.link.mesh.infrastructure.repository.InMemoryChatMemberRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryAttachmentRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryAlertRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryAttributeDefinitionRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryCategoryRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryCategoryTemplateRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryChangeLogRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryCommentRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryCodeBindingRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryCodeRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryConflictRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryCostCenterRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryDeadlineRuleRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryDepartmentRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryDashboardRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryEventRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryExportRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryFundingSourceRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryIncidentRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryItemRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryLabelRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryLabelTemplateRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryLegalHolderRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryLocationRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryOwnerRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryPrintTaskRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryQrCodeRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryReminderRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryRevisionRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryReviewRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryScanEventRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventorySessionMemberRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventorySessionRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventorySubcategoryRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventorySupplierRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryTagRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryCentralAuthSessionRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryCentralOrganizationAccessRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryCentralOrganizationWorkspaceRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryCentralSyncStateRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryInventoryThresholdRuleRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryOrganizationMemberRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryOrganizationRepositoryAdapter
+import org.expert.link.mesh.infrastructure.repository.InMemoryRoleRepositoryAdapter
+import org.expert.link.mesh.infrastructure.label.PdfBoxInventoryLabelRendererAdapter
 import org.expert.link.mesh.infrastructure.adapter.InMemoryPacketTransportAdapter
 import org.expert.link.mesh.infrastructure.adapter.KtorPacketTransportAdapter
 import org.expert.link.mesh.infrastructure.adapter.NoopMediaEngineAdapter
@@ -99,8 +174,9 @@ class MeshNodeBootstrap {
         mediaEnginePort: MediaEnginePort? = null,
         multicastSupportPort: MulticastSupportPort? = null,
         persistentRepositories: PersistentRepositoryBundle? = null,
+        centralClients: CentralClientBundle? = null,
     ): MeshNodeRuntime {
-        return bootstrapComponents(configuration, mediaEnginePort, multicastSupportPort, persistentRepositories).runtime
+        return bootstrapComponents(configuration, mediaEnginePort, multicastSupportPort, persistentRepositories, centralClients).runtime
     }
 
     /**
@@ -111,6 +187,7 @@ class MeshNodeBootstrap {
         mediaEnginePort: MediaEnginePort? = null,
         multicastSupportPort: MulticastSupportPort? = null,
         persistentRepositories: PersistentRepositoryBundle? = null,
+        centralClients: CentralClientBundle? = null,
     ): MeshNodeComponents {
         val localProfileRepositoryPort = persistentRepositories?.localProfileRepositoryPort ?: InMemoryLocalProfileRepositoryAdapter()
         val peerRepositoryPort = persistentRepositories?.peerRepositoryPort ?: InMemoryPeerRepositoryAdapter()
@@ -136,6 +213,79 @@ class MeshNodeBootstrap {
         val threadRepositoryPort = persistentRepositories?.threadRepositoryPort ?: InMemoryThreadRepositoryAdapter()
         val threadMessageRepositoryPort = persistentRepositories?.threadMessageRepositoryPort ?: InMemoryThreadMessageRepositoryAdapter()
         val groupEventRepositoryPort = persistentRepositories?.groupEventRepositoryPort ?: InMemoryGroupEventRepositoryAdapter()
+        val organizationRepositoryPort = persistentRepositories?.organizationRepositoryPort ?: InMemoryOrganizationRepositoryAdapter()
+        val organizationMemberRepositoryPort = persistentRepositories?.organizationMemberRepositoryPort ?: InMemoryOrganizationMemberRepositoryAdapter()
+        val roleRepositoryPort = persistentRepositories?.roleRepositoryPort ?: InMemoryRoleRepositoryAdapter()
+        val inventoryCategoryRepositoryPort = persistentRepositories?.inventoryCategoryRepositoryPort ?: InMemoryInventoryCategoryRepositoryAdapter()
+        val inventorySubcategoryRepositoryPort =
+            persistentRepositories?.inventorySubcategoryRepositoryPort ?: InMemoryInventorySubcategoryRepositoryAdapter()
+        val inventoryTagRepositoryPort = persistentRepositories?.inventoryTagRepositoryPort ?: InMemoryInventoryTagRepositoryAdapter()
+        val inventoryAttributeDefinitionRepositoryPort =
+            persistentRepositories?.inventoryAttributeDefinitionRepositoryPort ?: InMemoryInventoryAttributeDefinitionRepositoryAdapter()
+        val inventoryCategoryTemplateRepositoryPort =
+            persistentRepositories?.inventoryCategoryTemplateRepositoryPort ?: InMemoryInventoryCategoryTemplateRepositoryAdapter()
+        val inventoryLocationRepositoryPort = persistentRepositories?.inventoryLocationRepositoryPort ?: InMemoryInventoryLocationRepositoryAdapter()
+        val inventoryOwnerRepositoryPort = persistentRepositories?.inventoryOwnerRepositoryPort ?: InMemoryInventoryOwnerRepositoryAdapter()
+        val inventoryDepartmentRepositoryPort = persistentRepositories?.inventoryDepartmentRepositoryPort ?: InMemoryInventoryDepartmentRepositoryAdapter()
+        val inventoryCostCenterRepositoryPort = persistentRepositories?.inventoryCostCenterRepositoryPort ?: InMemoryInventoryCostCenterRepositoryAdapter()
+        val inventoryLegalHolderRepositoryPort =
+            persistentRepositories?.inventoryLegalHolderRepositoryPort ?: InMemoryInventoryLegalHolderRepositoryAdapter()
+        val inventorySupplierRepositoryPort = persistentRepositories?.inventorySupplierRepositoryPort ?: InMemoryInventorySupplierRepositoryAdapter()
+        val inventoryFundingSourceRepositoryPort =
+            persistentRepositories?.inventoryFundingSourceRepositoryPort ?: InMemoryInventoryFundingSourceRepositoryAdapter()
+        val inventoryItemRepositoryPort = persistentRepositories?.inventoryItemRepositoryPort ?: InMemoryInventoryItemRepositoryAdapter()
+        val inventorySessionRepositoryPort = persistentRepositories?.inventorySessionRepositoryPort ?: InMemoryInventorySessionRepositoryAdapter()
+        val inventorySessionMemberRepositoryPort =
+            persistentRepositories?.inventorySessionMemberRepositoryPort ?: InMemoryInventorySessionMemberRepositoryAdapter()
+        val inventoryReviewRepositoryPort = persistentRepositories?.inventoryReviewRepositoryPort ?: InMemoryInventoryReviewRepositoryAdapter()
+        val inventoryCommentRepositoryPort = persistentRepositories?.inventoryCommentRepositoryPort ?: InMemoryInventoryCommentRepositoryAdapter()
+        val inventoryAttachmentRepositoryPort =
+            persistentRepositories?.inventoryAttachmentRepositoryPort ?: InMemoryInventoryAttachmentRepositoryAdapter()
+        val inventoryIncidentRepositoryPort = persistentRepositories?.inventoryIncidentRepositoryPort ?: InMemoryInventoryIncidentRepositoryAdapter()
+        val inventoryAlertRepositoryPort = persistentRepositories?.inventoryAlertRepositoryPort ?: InMemoryInventoryAlertRepositoryAdapter()
+        val inventoryReminderRepositoryPort = persistentRepositories?.inventoryReminderRepositoryPort ?: InMemoryInventoryReminderRepositoryAdapter()
+        val inventoryThresholdRuleRepositoryPort =
+            persistentRepositories?.inventoryThresholdRuleRepositoryPort ?: InMemoryInventoryThresholdRuleRepositoryAdapter()
+        val inventoryDeadlineRuleRepositoryPort =
+            persistentRepositories?.inventoryDeadlineRuleRepositoryPort ?: InMemoryInventoryDeadlineRuleRepositoryAdapter()
+        val inventoryChangeLogRepositoryPort =
+            persistentRepositories?.inventoryChangeLogRepositoryPort ?: InMemoryInventoryChangeLogRepositoryAdapter()
+        val inventoryDashboardRepositoryPort =
+            persistentRepositories?.inventoryDashboardRepositoryPort ?: InMemoryInventoryDashboardRepositoryAdapter()
+        val inventoryCodeBindingRepositoryPort =
+            persistentRepositories?.inventoryCodeBindingRepositoryPort ?: InMemoryInventoryCodeBindingRepositoryAdapter()
+        val inventoryCodeRepositoryPort =
+            persistentRepositories?.inventoryCodeRepositoryPort ?: InMemoryInventoryCodeRepositoryAdapter()
+        val inventoryLabelTemplateRepositoryPort =
+            persistentRepositories?.inventoryLabelTemplateRepositoryPort ?: InMemoryInventoryLabelTemplateRepositoryAdapter()
+        val inventoryLabelRepositoryPort =
+            persistentRepositories?.inventoryLabelRepositoryPort ?: InMemoryInventoryLabelRepositoryAdapter()
+        val inventoryPrintTaskRepositoryPort =
+            persistentRepositories?.inventoryPrintTaskRepositoryPort ?: InMemoryInventoryPrintTaskRepositoryAdapter()
+        val inventoryScanEventRepositoryPort =
+            persistentRepositories?.inventoryScanEventRepositoryPort ?: InMemoryInventoryScanEventRepositoryAdapter()
+        val inventoryRevisionRepositoryPort =
+            persistentRepositories?.inventoryRevisionRepositoryPort ?: InMemoryInventoryRevisionRepositoryAdapter()
+        val inventoryConflictRepositoryPort =
+            persistentRepositories?.inventoryConflictRepositoryPort ?: InMemoryInventoryConflictRepositoryAdapter()
+        val inventoryEventRepositoryPort = persistentRepositories?.inventoryEventRepositoryPort ?: InMemoryInventoryEventRepositoryAdapter()
+        val inventoryExportRepositoryPort = persistentRepositories?.inventoryExportRepositoryPort ?: InMemoryInventoryExportRepositoryAdapter()
+        val inventoryQrCodeRepositoryPort = persistentRepositories?.inventoryQrCodeRepositoryPort ?: InMemoryInventoryQrCodeRepositoryAdapter()
+        val centralAuthSessionRepositoryPort =
+            persistentRepositories?.centralAuthSessionRepositoryPort ?: InMemoryCentralAuthSessionRepositoryAdapter()
+        val centralOrganizationAccessRepositoryPort =
+            persistentRepositories?.centralOrganizationAccessRepositoryPort ?: InMemoryCentralOrganizationAccessRepositoryAdapter()
+        val centralSyncStateRepositoryPort =
+            persistentRepositories?.centralSyncStateRepositoryPort ?: InMemoryCentralSyncStateRepositoryAdapter()
+        val centralOrganizationWorkspaceRepositoryPort =
+            persistentRepositories?.centralOrganizationWorkspaceRepositoryPort ?: InMemoryCentralOrganizationWorkspaceRepositoryAdapter()
+        val effectiveCentralClients = centralClients ?: configuration.centralConfiguration?.let {
+            DefaultCentralClientFactory().create(
+                configuration = it,
+                authSessionRepositoryPort = centralAuthSessionRepositoryPort,
+                organizationAccessRepositoryPort = centralOrganizationAccessRepositoryPort,
+            )
+        }
 
         val cryptoPort = BasicCryptoAdapter()
         val keyMaterialFactory = KeyMaterialFactory(cryptoPort)
@@ -328,6 +478,276 @@ class MeshNodeBootstrap {
             eventLogService = eventLogService,
             nodeMetricsService = nodeMetricsService,
         )
+        val inventoryRbacService = InventoryRbacService(roleRepositoryPort, organizationMemberRepositoryPort)
+        val inventoryEventService = InventoryEventService(inventoryEventRepositoryPort)
+        val inventoryEventApplier = InventoryEventApplier(
+            localProfileService = localProfileService,
+            organizationRepositoryPort = organizationRepositoryPort,
+            organizationMemberRepositoryPort = organizationMemberRepositoryPort,
+            roleRepositoryPort = roleRepositoryPort,
+            categoryRepositoryPort = inventoryCategoryRepositoryPort,
+            subcategoryRepositoryPort = inventorySubcategoryRepositoryPort,
+            tagRepositoryPort = inventoryTagRepositoryPort,
+            attributeDefinitionRepositoryPort = inventoryAttributeDefinitionRepositoryPort,
+            categoryTemplateRepositoryPort = inventoryCategoryTemplateRepositoryPort,
+            locationRepositoryPort = inventoryLocationRepositoryPort,
+            ownerRepositoryPort = inventoryOwnerRepositoryPort,
+            departmentRepositoryPort = inventoryDepartmentRepositoryPort,
+            costCenterRepositoryPort = inventoryCostCenterRepositoryPort,
+            legalHolderRepositoryPort = inventoryLegalHolderRepositoryPort,
+            supplierRepositoryPort = inventorySupplierRepositoryPort,
+            fundingSourceRepositoryPort = inventoryFundingSourceRepositoryPort,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            sessionRepositoryPort = inventorySessionRepositoryPort,
+            reviewRepositoryPort = inventoryReviewRepositoryPort,
+            commentRepositoryPort = inventoryCommentRepositoryPort,
+            attachmentRepositoryPort = inventoryAttachmentRepositoryPort,
+            incidentRepositoryPort = inventoryIncidentRepositoryPort,
+            alertRepositoryPort = inventoryAlertRepositoryPort,
+            reminderRepositoryPort = inventoryReminderRepositoryPort,
+            thresholdRuleRepositoryPort = inventoryThresholdRuleRepositoryPort,
+            deadlineRuleRepositoryPort = inventoryDeadlineRuleRepositoryPort,
+            changeLogRepositoryPort = inventoryChangeLogRepositoryPort,
+            dashboardRepositoryPort = inventoryDashboardRepositoryPort,
+            codeRepositoryPort = inventoryCodeRepositoryPort,
+            codeBindingRepositoryPort = inventoryCodeBindingRepositoryPort,
+            labelTemplateRepositoryPort = inventoryLabelTemplateRepositoryPort,
+            labelRepositoryPort = inventoryLabelRepositoryPort,
+            printTaskRepositoryPort = inventoryPrintTaskRepositoryPort,
+            scanEventRepositoryPort = inventoryScanEventRepositoryPort,
+            revisionRepositoryPort = inventoryRevisionRepositoryPort,
+            conflictRepositoryPort = inventoryConflictRepositoryPort,
+            exportRepositoryPort = inventoryExportRepositoryPort,
+            qrCodeRepositoryPort = inventoryQrCodeRepositoryPort,
+            eventRepositoryPort = inventoryEventRepositoryPort,
+            inventoryEventService = inventoryEventService,
+        )
+        val inventorySyncService = InventorySyncService(
+            localProfileService = localProfileService,
+            organizationMemberRepositoryPort = organizationMemberRepositoryPort,
+            peerTrustVerificationService = peerTrustVerificationService,
+            messageEncryptionService = messageEncryptionService,
+            packetEnvelopeFactory = packetEnvelopeFactory,
+            packetSignatureService = packetSignatureService,
+            deliveryTrackingService = deliveryTrackingService,
+            inventoryEventRepositoryPort = inventoryEventRepositoryPort,
+            inventoryEventApplier = inventoryEventApplier,
+            eventLogService = eventLogService,
+            nodeMetricsService = nodeMetricsService,
+        )
+        val inventoryChangeLogService = InventoryChangeLogService(
+            changeLogRepositoryPort = inventoryChangeLogRepositoryPort,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryOrganizationService = InventoryOrganizationService(
+            localProfileService = localProfileService,
+            organizationRepositoryPort = organizationRepositoryPort,
+            organizationMemberRepositoryPort = organizationMemberRepositoryPort,
+            roleRepositoryPort = roleRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryCatalogService = InventoryCatalogService(
+            localProfileService = localProfileService,
+            categoryRepositoryPort = inventoryCategoryRepositoryPort,
+            subcategoryRepositoryPort = inventorySubcategoryRepositoryPort,
+            tagRepositoryPort = inventoryTagRepositoryPort,
+            attributeDefinitionRepositoryPort = inventoryAttributeDefinitionRepositoryPort,
+            categoryTemplateRepositoryPort = inventoryCategoryTemplateRepositoryPort,
+            locationRepositoryPort = inventoryLocationRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryOwnershipService = InventoryOwnershipService(
+            localProfileService = localProfileService,
+            ownerRepositoryPort = inventoryOwnerRepositoryPort,
+            departmentRepositoryPort = inventoryDepartmentRepositoryPort,
+            costCenterRepositoryPort = inventoryCostCenterRepositoryPort,
+            legalHolderRepositoryPort = inventoryLegalHolderRepositoryPort,
+            supplierRepositoryPort = inventorySupplierRepositoryPort,
+            fundingSourceRepositoryPort = inventoryFundingSourceRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryItemService = InventoryItemService(
+            localProfileService = localProfileService,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            commentRepositoryPort = inventoryCommentRepositoryPort,
+            attachmentRepositoryPort = inventoryAttachmentRepositoryPort,
+            qrCodeRepositoryPort = inventoryQrCodeRepositoryPort,
+            codeRepositoryPort = inventoryCodeRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventoryChangeLogService = inventoryChangeLogService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventorySessionService = InventorySessionService(
+            localProfileService = localProfileService,
+            sessionRepositoryPort = inventorySessionRepositoryPort,
+            sessionMemberRepositoryPort = inventorySessionMemberRepositoryPort,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventoryChangeLogService = inventoryChangeLogService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryReviewService = InventoryReviewService(
+            localProfileService = localProfileService,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            sessionRepositoryPort = inventorySessionRepositoryPort,
+            reviewRepositoryPort = inventoryReviewRepositoryPort,
+            attachmentRepositoryPort = inventoryAttachmentRepositoryPort,
+            incidentRepositoryPort = inventoryIncidentRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryIncidentService = InventoryIncidentService(
+            localProfileService = localProfileService,
+            incidentRepositoryPort = inventoryIncidentRepositoryPort,
+            alertRepositoryPort = inventoryAlertRepositoryPort,
+            reminderRepositoryPort = inventoryReminderRepositoryPort,
+            thresholdRuleRepositoryPort = inventoryThresholdRuleRepositoryPort,
+            deadlineRuleRepositoryPort = inventoryDeadlineRuleRepositoryPort,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            sessionRepositoryPort = inventorySessionRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryExportService = InventoryExportService(
+            localProfileService = localProfileService,
+            sessionRepositoryPort = inventorySessionRepositoryPort,
+            exportRepositoryPort = inventoryExportRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventoryDashboardService = InventoryDashboardService(
+            localProfileService = localProfileService,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            incidentRepositoryPort = inventoryIncidentRepositoryPort,
+            sessionRepositoryPort = inventorySessionRepositoryPort,
+            dashboardRepositoryPort = inventoryDashboardRepositoryPort,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val inventorySearchService = InventorySearchService(
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            incidentRepositoryPort = inventoryIncidentRepositoryPort,
+        )
+        val inventoryCodeService = InventoryCodeService(
+            localProfileService = localProfileService,
+            codeBindingRepositoryPort = inventoryCodeBindingRepositoryPort,
+            scanEventRepositoryPort = inventoryScanEventRepositoryPort,
+            qrCodeRepositoryPort = inventoryQrCodeRepositoryPort,
+            codeRepositoryPort = inventoryCodeRepositoryPort,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            inventoryItemService = inventoryItemService,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+        )
+        val labelRendererPort = PdfBoxInventoryLabelRendererAdapter(configuration.fileTransferSettings.downloadDirectory)
+        val inventoryLabelService = InventoryLabelService(
+            localProfileService = localProfileService,
+            labelTemplateRepositoryPort = inventoryLabelTemplateRepositoryPort,
+            labelRepositoryPort = inventoryLabelRepositoryPort,
+            printTaskRepositoryPort = inventoryPrintTaskRepositoryPort,
+            codeRepositoryPort = inventoryCodeRepositoryPort,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            organizationRepositoryPort = organizationRepositoryPort,
+            locationRepositoryPort = inventoryLocationRepositoryPort,
+            departmentRepositoryPort = inventoryDepartmentRepositoryPort,
+            rbacService = inventoryRbacService,
+            inventoryEventService = inventoryEventService,
+            inventorySyncService = inventorySyncService,
+            rendererPort = labelRendererPort,
+        )
+        val inventoryQueryService = InventoryQueryService(
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            qrCodeRepositoryPort = inventoryQrCodeRepositoryPort,
+            codeRepositoryPort = inventoryCodeRepositoryPort,
+        )
+        val inventoryDiscussionService = InventoryDiscussionService(
+            groupChatService = groupChatService,
+            threadService = threadService,
+        )
+        val connectivityModeService = ConnectivityModeService(
+            configuration = configuration.centralConfiguration,
+            syncStateRepositoryPort = centralSyncStateRepositoryPort,
+        )
+        val syncQueueService = SyncQueueService(
+            inventoryEventRepositoryPort = inventoryEventRepositoryPort,
+            syncStateRepositoryPort = centralSyncStateRepositoryPort,
+        )
+        val centralAuthService = CentralAuthService(
+            configuration = configuration.centralConfiguration,
+            authClientPort = effectiveCentralClients?.authClientPort,
+            authSessionRepositoryPort = centralAuthSessionRepositoryPort,
+        )
+        val centralOrganizationAccessService = CentralOrganizationAccessService(
+            localProfileService = localProfileService,
+            organizationAccessClientPort = effectiveCentralClients?.organizationAccessClientPort,
+            authSessionRepositoryPort = centralAuthSessionRepositoryPort,
+            centralOrganizationAccessRepositoryPort = centralOrganizationAccessRepositoryPort,
+            organizationRepositoryPort = organizationRepositoryPort,
+            organizationMemberRepositoryPort = organizationMemberRepositoryPort,
+            roleRepositoryPort = roleRepositoryPort,
+        )
+        val centralOrganizationWorkspaceService = CentralOrganizationWorkspaceService(
+            organizationAccessClientPort = effectiveCentralClients?.organizationAccessClientPort,
+            relayClientPort = effectiveCentralClients?.relayClientPort,
+            authSessionRepositoryPort = centralAuthSessionRepositoryPort,
+            workspaceRepositoryPort = centralOrganizationWorkspaceRepositoryPort,
+            locationRepositoryPort = inventoryLocationRepositoryPort,
+            departmentRepositoryPort = inventoryDepartmentRepositoryPort,
+            costCenterRepositoryPort = inventoryCostCenterRepositoryPort,
+        )
+        val conflictStateService = ConflictStateService(
+            syncClientPort = effectiveCentralClients?.syncClientPort,
+            inventoryConflictRepositoryPort = inventoryConflictRepositoryPort,
+        )
+        val onlineOfflineStateService = OnlineOfflineStateService(
+            configuration = configuration.centralConfiguration,
+            authSessionRepositoryPort = centralAuthSessionRepositoryPort,
+            centralOrganizationAccessRepositoryPort = centralOrganizationAccessRepositoryPort,
+            centralSyncStateRepositoryPort = centralSyncStateRepositoryPort,
+        )
+        val centralAttachmentSyncService = CentralAttachmentSyncService(
+            attachmentClientPort = effectiveCentralClients?.attachmentClientPort,
+            attachmentRepositoryPort = inventoryAttachmentRepositoryPort,
+            fileTransferRepositoryPort = fileTransferRepositoryPort,
+            syncQueueService = syncQueueService,
+        )
+        val centralExportIntegrationService = CentralExportIntegrationService(
+            localProfileService = localProfileService,
+            exportClientPort = effectiveCentralClients?.exportClientPort,
+            exportRepositoryPort = inventoryExportRepositoryPort,
+        )
+        val centralSyncOrchestrationService = CentralSyncOrchestrationService(
+            configuration = configuration.centralConfiguration,
+            localProfileService = localProfileService,
+            connectivityModeService = connectivityModeService,
+            syncQueueService = syncQueueService,
+            centralOrganizationAccessService = centralOrganizationAccessService,
+            centralOrganizationWorkspaceService = centralOrganizationWorkspaceService,
+            inventoryClientPort = effectiveCentralClients?.inventoryClientPort,
+            syncClientPort = effectiveCentralClients?.syncClientPort,
+            attachmentSyncService = centralAttachmentSyncService,
+            inventoryEventApplier = inventoryEventApplier,
+            inventoryConflictRepositoryPort = inventoryConflictRepositoryPort,
+            organizationRepositoryPort = organizationRepositoryPort,
+            organizationMemberRepositoryPort = organizationMemberRepositoryPort,
+            roleRepositoryPort = roleRepositoryPort,
+            itemRepositoryPort = inventoryItemRepositoryPort,
+            sessionRepositoryPort = inventorySessionRepositoryPort,
+            centralSyncStateRepositoryPort = centralSyncStateRepositoryPort,
+        )
 
         var server: ApplicationEngine? = null
         lateinit var lifecycleService: NodeLifecycleService
@@ -341,6 +761,7 @@ class MeshNodeBootstrap {
             fileTransferService = fileTransferService,
             callSignalingService = callSignalingService,
             callMediaService = callMediaService,
+            inventorySyncService = inventorySyncService,
             discoveryPort = discoveryPort,
             discoveryOrchestrationService = discoveryOrchestrationService,
             reversePathRepositoryPort = reversePathRepositoryPort,
@@ -403,6 +824,24 @@ class MeshNodeBootstrap {
             threadRepositoryPort = threadRepositoryPort,
             threadMessageRepositoryPort = threadMessageRepositoryPort,
             groupEventRepositoryPort = groupEventRepositoryPort,
+            organizationRepositoryPort = organizationRepositoryPort,
+            organizationMemberRepositoryPort = organizationMemberRepositoryPort,
+            roleRepositoryPort = roleRepositoryPort,
+            inventoryCategoryRepositoryPort = inventoryCategoryRepositoryPort,
+            inventoryLocationRepositoryPort = inventoryLocationRepositoryPort,
+            inventoryItemRepositoryPort = inventoryItemRepositoryPort,
+            inventorySessionRepositoryPort = inventorySessionRepositoryPort,
+            inventorySessionMemberRepositoryPort = inventorySessionMemberRepositoryPort,
+            inventoryReviewRepositoryPort = inventoryReviewRepositoryPort,
+            inventoryCommentRepositoryPort = inventoryCommentRepositoryPort,
+            inventoryAttachmentRepositoryPort = inventoryAttachmentRepositoryPort,
+            inventoryEventRepositoryPort = inventoryEventRepositoryPort,
+            inventoryExportRepositoryPort = inventoryExportRepositoryPort,
+            inventoryQrCodeRepositoryPort = inventoryQrCodeRepositoryPort,
+            inventoryCodeRepositoryPort = inventoryCodeRepositoryPort,
+            inventoryLabelTemplateRepositoryPort = inventoryLabelTemplateRepositoryPort,
+            inventoryLabelRepositoryPort = inventoryLabelRepositoryPort,
+            inventoryPrintTaskRepositoryPort = inventoryPrintTaskRepositoryPort,
             blockListService = blockListService,
             chatMessagingService = chatMessagingService,
             groupChatService = groupChatService,
@@ -413,6 +852,32 @@ class MeshNodeBootstrap {
             routingService = liveRoutingService,
             topologyStateService = topologyStateService,
             connectivityStrategyService = liveConnectivityStrategyService,
+            inventoryOrganizationService = inventoryOrganizationService,
+            inventoryCatalogService = inventoryCatalogService,
+            inventoryOwnershipService = inventoryOwnershipService,
+            inventoryItemService = inventoryItemService,
+            inventorySessionService = inventorySessionService,
+            inventoryReviewService = inventoryReviewService,
+            inventoryIncidentService = inventoryIncidentService,
+            inventoryExportService = inventoryExportService,
+            inventoryQueryService = inventoryQueryService,
+            inventoryChangeLogService = inventoryChangeLogService,
+            inventoryDashboardService = inventoryDashboardService,
+            inventorySearchService = inventorySearchService,
+            inventoryCodeService = inventoryCodeService,
+            inventoryLabelService = inventoryLabelService,
+            inventorySyncService = inventorySyncService,
+            inventoryDiscussionService = inventoryDiscussionService,
+            centralAuthService = centralAuthService,
+            centralOrganizationAccessService = centralOrganizationAccessService,
+            centralOrganizationWorkspaceService = centralOrganizationWorkspaceService,
+            connectivityModeService = connectivityModeService,
+            syncQueueService = syncQueueService,
+            conflictStateService = conflictStateService,
+            onlineOfflineStateService = onlineOfflineStateService,
+            centralAttachmentSyncService = centralAttachmentSyncService,
+            centralExportIntegrationService = centralExportIntegrationService,
+            centralSyncOrchestrationService = centralSyncOrchestrationService,
         )
     }
 

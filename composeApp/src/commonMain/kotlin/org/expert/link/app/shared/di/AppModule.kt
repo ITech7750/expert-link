@@ -8,7 +8,12 @@ import org.expert.link.app.shared.presentation.NodeSessionController
 import org.expert.link.app.shared.screen.chat.ChatComponent
 import org.expert.link.app.shared.screen.chat.ChatUiStateStore
 import org.expert.link.app.shared.screen.chatlist.ChatListComponent
+import org.expert.link.app.shared.screen.inventory.InventoryComponent
+import org.expert.link.app.shared.screen.inventory.InventoryItemComponent
+import org.expert.link.app.shared.screen.inventory.InventoryScannerComponent
+import org.expert.link.app.shared.screen.inventory.InventorySessionComponent
 import org.expert.link.app.shared.screen.invite.InviteComponent
+import org.expert.link.app.shared.screen.main.MainComponent
 import org.expert.link.app.shared.screen.profile.ProfileComponent
 import org.koin.core.context.GlobalContext
 import org.koin.core.parameter.parametersOf
@@ -19,6 +24,14 @@ fun appModule(services: AppPlatformServices) = module {
     single { services }
     single { NodeSessionController(get()) }
     single { ChatUiStateStore() }
+
+    factory { params ->
+        MainComponent(
+            context = params.get(),
+            onNavigate = params.get(),
+            onBack = params.get(),
+        )
+    }
 
     factory { params ->
         ChatListComponent(
@@ -36,6 +49,41 @@ fun appModule(services: AppPlatformServices) = module {
             conversationId = params[3],
             initialPeerId = params[4],
             initialTitle = params[5],
+            initialThreadRootMessageId = params[6],
+        )
+    }
+
+    factory { params ->
+        InventoryComponent(
+            context = params.get(),
+            onNavigate = params.get(),
+            onBack = params.get(),
+        )
+    }
+
+    factory { params ->
+        InventoryItemComponent(
+            context = params.get(),
+            onNavigate = params.get(),
+            onBack = params.get(),
+            itemId = params.get(),
+        )
+    }
+
+    factory { params ->
+        InventorySessionComponent(
+            context = params.get(),
+            onNavigate = params.get(),
+            onBack = params.get(),
+            sessionId = params.get(),
+        )
+    }
+
+    factory { params ->
+        InventoryScannerComponent(
+            context = params.get(),
+            onNavigate = params.get(),
+            onBack = params.get(),
         )
     }
 

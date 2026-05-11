@@ -13,6 +13,7 @@ enum class MeshEventCategory {
     CALL,
     SECURITY,
     ROUTING,
+    INVENTORY,
     SYSTEM,
 }
 

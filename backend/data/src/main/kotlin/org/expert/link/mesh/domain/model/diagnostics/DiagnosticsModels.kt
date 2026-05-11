@@ -13,6 +13,7 @@ enum class EventCategory {
     CALL,
     SECURITY,
     ROUTING,
+    INVENTORY,
     SYSTEM,
 }
 

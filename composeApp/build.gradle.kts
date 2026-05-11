@@ -65,11 +65,16 @@ kotlin {
             implementation(libs.koin.core)
         }
 
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+
         val jvmMain by getting {
             dependencies {
                 implementation(project(":backend"))
                 implementation(project(":database"))
                 implementation(libs.zxingCore)
+                implementation("org.apache.pdfbox:pdfbox:2.0.29")
                 implementation(compose.desktop.currentOs)
                 implementation(libs.webrtcJava)
                 runtimeOnly(libs.logbackClassic)
@@ -122,6 +127,7 @@ android {
         resources {
             excludes += "META-INF/INDEX.LIST"
             excludes += "META-INF/io.netty.versions.properties"
+            excludes += "META-INF/DEPENDENCIES"
         }
     }
 

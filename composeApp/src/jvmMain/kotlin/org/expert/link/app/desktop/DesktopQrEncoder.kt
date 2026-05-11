@@ -11,8 +11,8 @@ internal fun buildDesktopQrCode(text: String): QrCodeMatrix? = runCatching {
     val matrix = QRCodeWriter().encode(
         text,
         BarcodeFormat.QR_CODE,
-        512,
-        512,
+        192,
+        192,
         mapOf(
             EncodeHintType.MARGIN to 1,
             EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,

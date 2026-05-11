@@ -12,6 +12,9 @@ import org.expert.link.mesh.domain.model.network.FileChunkPayload
 import org.expert.link.mesh.domain.model.network.FileComplete
 import org.expert.link.mesh.domain.model.network.FileOffer
 import org.expert.link.mesh.domain.model.network.FileResumeRequestPayload
+import org.expert.link.mesh.domain.model.network.InventoryEventPacket
+import org.expert.link.mesh.domain.model.network.InventorySyncRequestPayload
+import org.expert.link.mesh.domain.model.network.InventorySyncResponsePayload
 import org.expert.link.mesh.domain.model.network.PacketEnvelope
 import org.expert.link.mesh.domain.model.network.PacketPayload
 import org.expert.link.mesh.domain.model.network.PacketType
@@ -59,6 +62,9 @@ class PacketSerializationService {
         is CallSignalPayload -> json.encodeToString(CallSignalPayload.serializer(), payload)
         is CallHangup -> json.encodeToString(CallHangup.serializer(), payload)
         is SystemEventPayload -> json.encodeToString(SystemEventPayload.serializer(), payload)
+        is InventoryEventPacket -> json.encodeToString(InventoryEventPacket.serializer(), payload)
+        is InventorySyncRequestPayload -> json.encodeToString(InventorySyncRequestPayload.serializer(), payload)
+        is InventorySyncResponsePayload -> json.encodeToString(InventorySyncResponsePayload.serializer(), payload)
     }.toByteArray(Charsets.UTF_8)
 
     /**
@@ -83,6 +89,9 @@ class PacketSerializationService {
             PacketType.CALL_SIGNAL -> json.decodeFromString(CallSignalPayload.serializer(), text)
             PacketType.CALL_HANGUP -> json.decodeFromString(CallHangup.serializer(), text)
             PacketType.SYSTEM_EVENT -> json.decodeFromString(SystemEventPayload.serializer(), text)
+            PacketType.INVENTORY_EVENT -> json.decodeFromString(InventoryEventPacket.serializer(), text)
+            PacketType.INVENTORY_SYNC_REQUEST -> json.decodeFromString(InventorySyncRequestPayload.serializer(), text)
+            PacketType.INVENTORY_SYNC_RESPONSE -> json.decodeFromString(InventorySyncResponsePayload.serializer(), text)
         }
     }
 }

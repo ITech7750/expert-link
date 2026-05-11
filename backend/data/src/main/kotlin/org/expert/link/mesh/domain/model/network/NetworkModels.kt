@@ -34,6 +34,9 @@ enum class PacketType {
     CALL_SIGNAL,
     CALL_HANGUP,
     SYSTEM_EVENT,
+    INVENTORY_EVENT,
+    INVENTORY_SYNC_REQUEST,
+    INVENTORY_SYNC_RESPONSE,
 }
 
 /** Типы кадров поиска узлов. */

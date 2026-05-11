@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForwardIos
 import androidx.compose.material.icons.outlined.AddComment
+import androidx.compose.material.icons.automirrored.outlined.FactCheck
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Videocam
@@ -77,6 +79,9 @@ fun ChatListScreen(component: ChatListComponent) {
                     IconButton(onClick = component::refreshNow) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "Обновить")
                     }
+                    IconButton(onClick = component::openInventory) {
+                        Icon(Icons.AutoMirrored.Outlined.FactCheck, contentDescription = "Инвентаризация")
+                    }
                     IconButton(onClick = component::openProfile) {
                         Icon(Icons.Outlined.Person, contentDescription = "Профиль")
                     }
@@ -108,14 +113,18 @@ fun ChatListScreen(component: ChatListComponent) {
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 item {
-                    OutlinedTextField(
-                        value = state.searchQuery,
-                        onValueChange = component::updateSearchQuery,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Поиск") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(22.dp),
-                    )
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                        OutlinedTextField(
+                            value = state.searchQuery,
+                            onValueChange = component::updateSearchQuery,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = 620.dp),
+                            label = { Text("Поиск по чатам") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(22.dp),
+                        )
+                    }
                 }
 
                 state.incomingCall?.let { incoming ->

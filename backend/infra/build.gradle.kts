@@ -14,6 +14,8 @@ dependencies {
     implementation(libs.bundles.ktorClient)
     implementation(libs.slf4jApi)
     implementation(libs.kotlinLogging)
+    implementation(libs.zxingCore)
+    implementation("org.apache.pdfbox:pdfbox:2.0.29")
 
     testImplementation(platform(libs.junitBom))
     testImplementation(libs.bundles.testCore)

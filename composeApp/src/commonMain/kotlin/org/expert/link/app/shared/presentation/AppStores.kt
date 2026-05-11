@@ -1323,4 +1323,5 @@ class ExpertLinkAppStore(
     val diagnostics = DiagnosticsStore(session)
     val profile = ProfileStore(session)
     val settings = SettingsStore(session)
+    val inventory = InventoryStore(session)
 }

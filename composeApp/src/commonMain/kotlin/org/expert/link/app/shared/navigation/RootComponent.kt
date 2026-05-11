@@ -25,7 +25,7 @@ class RootComponent(
     val childStack = childStack(
         source = navigation,
         serializer = Config.serializer(),
-        initialConfiguration = Config.ChatList,
+        initialConfiguration = Config.Main,
         handleBackButton = true,
         childFactory = { config, context ->
             Child.create(

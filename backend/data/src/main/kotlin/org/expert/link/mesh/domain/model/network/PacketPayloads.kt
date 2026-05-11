@@ -8,6 +8,7 @@ import org.expert.link.mesh.domain.model.call.CallType
 import org.expert.link.mesh.domain.model.filetransfer.FileChunk
 import org.expert.link.mesh.domain.model.filetransfer.FileDescriptor
 import org.expert.link.mesh.domain.model.filetransfer.FileResumeRequest
+import org.expert.link.mesh.domain.model.inventory.InventoryEvent
 import org.expert.link.mesh.domain.model.messaging.ChatType
 import org.expert.link.mesh.domain.model.messaging.MessageType
 
@@ -175,4 +176,32 @@ data class SystemEventPayload(
     val message: String,
     val createdAt: Instant,
     val attributes: Map<String, String> = emptyMap(),
+) : PacketPayload
+
+/** Payload инвентарного события. */
+@Serializable
+data class InventoryEventPacket(
+    val event: InventoryEvent,
+    val sentAt: Instant,
+) : PacketPayload
+
+/** Запрос на синхронизацию инвентаризации. */
+@Serializable
+data class InventorySyncRequestPayload(
+    val requestId: String,
+    val organizationId: String,
+    val requesterPeerId: String,
+    val sinceSequence: Long? = null,
+    val requestedAt: Instant,
+) : PacketPayload
+
+/** Ответ на запрос синхронизации. */
+@Serializable
+data class InventorySyncResponsePayload(
+    val requestId: String,
+    val organizationId: String,
+    val responderPeerId: String,
+    val targetPeerId: String,
+    val events: List<InventoryEvent>,
+    val sentAt: Instant,
 ) : PacketPayload

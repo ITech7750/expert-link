@@ -30,7 +30,17 @@ actual fun InlineQrScanner(
                 ViewGroup.LayoutParams.MATCH_PARENT,
             )
             statusView?.text = ""
-            barcodeView.decoderFactory = DefaultDecoderFactory(listOf(BarcodeFormat.QR_CODE))
+            barcodeView.decoderFactory = DefaultDecoderFactory(
+                listOf(
+                    BarcodeFormat.QR_CODE,
+                    BarcodeFormat.CODE_128,
+                    BarcodeFormat.CODE_39,
+                    BarcodeFormat.EAN_13,
+                    BarcodeFormat.EAN_8,
+                    BarcodeFormat.UPC_A,
+                    BarcodeFormat.UPC_E,
+                ),
+            )
             barcodeView.cameraSettings.isAutoFocusEnabled = true
         }
     }
